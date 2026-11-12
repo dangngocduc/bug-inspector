@@ -6,17 +6,23 @@ Package trong repo có `publish_to: none`; không giả định đã có version
 
 ```yaml
 dependencies:
-  flutter:
-    sdk: flutter
-  flutter_bloc: ^9.1.1
-  bloc: ^9.2.0
   flutter_qa_inspector:
     path: ../flutter_qa_inspector
+    # hoặc git: { url: <repo>, path: flutter_qa_inspector, ref: <tag/sha> }
 ```
 
-Contract hiện tại: Dart `>=3.3.0 <4.0.0`, Flutter `>=3.19.0`; `bloc ^9.2.0` ở ví dụ trên để dùng `MultiBlocObserver`. Kiểm tra SDK và lockfile của host khi resolve, không nâng các dependency khác chỉ để khớp đoạn YAML. Nếu không cần timeline thì không cần thêm `bloc` chỉ để import `MultiBlocObserver`.
+Contract `0.8.0`: Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên; không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ.
 
-Nếu host dùng `bloc` cũ chưa có `MultiBlocObserver`, giữ cơ chế composition observer hiện có hoặc ghép delegate vào observer của app với đầy đủ các hooks cần ghi. Không thay mất observer hiện tại; không dùng API `MultiBlocObserver` khi version chưa hỗ trợ.
+`share_plus` là plugin: native code của nó có trong mọi build của host, kể cả production. Khi host chỉ mở form qua facade, nhánh inspector/form không được gọi khi thiếu define. Báo rõ điểm này nếu host nhạy cảm với kích thước binary hoặc danh sách plugin.
+
+Đối chiếu version trong lockfile với native toolchain trước khi build:
+
+- `share_plus 12.0.0`: iOS 12+, macOS 10.14+; Android cần Java 17, Kotlin 2.2.0, AGP 8.12.1+, Gradle 8.13+.
+- `share_plus 13.3.1`: Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; yêu cầu Android như trên. Pub kiểm tra SDK khi resolve, không tự nâng deployment target native của host.
+- Với share sheet mặc định trên iOS, thêm `NSPhotoLibraryAddUsageDescription` vào `ios/Runner/Info.plist` cho action **Save Image**. Package không tự ghi được Info.plist của host. Form đã đặt `sharePositionOrigin` cho popover trên iPad.
+- Linux không share file qua plugin; dùng `share:` riêng nếu cần gửi ZIP. Web tùy browser có thể share file hoặc download.
+
+Nguồn yêu cầu theo version: [12.0.0](https://pub.dev/packages/share_plus/versions/12.0.0), [13.3.1](https://pub.dev/packages/share_plus/versions/13.3.1). Với version khác trong range, đọc README/native config đúng bản resolve thay vì áp dụng mức tối thiểu của bản khác.
 
 ```sh
 flutter pub get
@@ -26,9 +32,49 @@ flutter build ipa --dart-define=FLUTTER_QA_INSPECTOR=true
 
 Lệnh IPA là ví dụ artifact QA khi project có target iOS. Dùng đúng flavor, entrypoint và Flutter/FVM runner sẵn có của host. Define là compile-time: sau khi đổi cần chạy/build lại, hot reload không đổi nó. Với VS Code, thêm define vào `toolArgs` của configuration QA, không đưa vào configuration production.
 
-## Host và timeline
+## Tích hợp nhanh (mặc định)
 
-Ví dụ standalone dưới đây minh họa public API. Khi ghép vào app thật, giữ bootstrap, theme, localization, routes và providers đang có; chỉ thêm observer/host vào đúng điểm. `debugPrint` ở đây chỉ để xem payload demo, app thật nối callback với flow báo lỗi của mình.
+Dùng cách này khi host chỉ cần form báo lỗi có sẵn: chụp ảnh, vẽ khung, mô tả, chia sẻ PNG + ZIP. Không tạo file wrapper/form riêng trong host.
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
+
+void main() {
+  // Một lần, trước bootstrap tạo BLoC/Cubit. Giữ Bloc.observer đang có.
+  FlutterQaInspector.install();
+  runApp(const App());
+}
+
+class App extends StatelessWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        // Builder đã bọc widget khác: (context, child) =>
+        //     Existing(child: FlutterQaInspector.wrap(child: child!)).
+        builder: FlutterQaInspector.builder,
+        home: const BugInspectablePage(
+          id: 'home',
+          sourceFile: 'lib/main.dart',
+          child: Scaffold(body: Center(child: Text('QA example'))),
+        ),
+      );
+}
+```
+
+- `FlutterQaInspector.install({stateRecorder})`: thiếu define thì không làm gì. Có define thì đặt `Bloc.observer = MultiBlocObserver([observer cũ, BugInspectorBlocObserver])` một lần; gọi lại không cài thêm. `FlutterQaInspector.recorder` là recorder đó. Gọi sau khi BLoC/Cubit đã tạo thì timeline thiếu các record trước đó.
+- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)`: thiếu define thì trả nguyên `child`. Có define thì dựng `BugInspector` với recorder của `install` (hoặc `stateRecorder`), mỗi selection chụp ảnh rồi `BugReportPage.open` trên root navigator; launcher ẩn tới khi form đóng. `FlutterQaInspector.builder` là `wrap` với mặc định.
+- `strings`: `BugReportStringsBuilder` trả `BugReportStrings` cho cả thanh công cụ (`selectionHint`, `pageButtonLabel`), form và trang vẽ. Mặc định `BugReportStrings.of(context)`: `vi` khi locale tiếng Việt, còn lại `en`. Host có l10n riêng thì map từ hệ đó, ví dụ `strings: (context) => BugReportStrings.en.copyWith(title: S.of(context).bugReportTitle)`; không thêm chuỗi viết cứng vào widget của host.
+- `share`: `BugReportShare` (`Future<ShareResult> Function(ShareParams)`), mặc định `SharePlus.instance.share`. Dùng để upload/tạo ticket từ `params.files` (PNG, ZIP) và `params.text`; trả `ShareResultStatus.dismissed` để giữ form, trạng thái khác để đóng; lỗi ném ra hiện dialog. Package export lại `ShareParams`, `ShareResult`, `ShareResultStatus`, `XFile`.
+- Route: `BugInspectablePage.route(settings:, child:, sourceFile:)` trong `onGenerateRoute` biến mỗi route có tên thành page chọn được, xem [widget-page.md](widget-page.md).
+- `BugReportPage.routeName` là `/qa-bug-report`. Nếu host log/analytics route hoặc có route guard theo tên, loại trừ route này.
+
+Host đã có bản copy `BugReportPage`, `BugReportBundle`, `ScreenshotAnnotationPage` từ example cũ (ví dụ trong `lib/utils/debug/`) sẽ lỗi `ambiguous_import` khi nâng lên `0.8.0`: xóa các file đó, thay wrapper bằng `install`/`wrap`, đổi marker route tự viết sang `BugInspectablePage.route`, và chỉ giữ map `strings` nếu host muốn dùng l10n riêng.
+
+## Host tùy chỉnh và timeline
+
+Dùng `BugInspector` trực tiếp khi host cần form/luồng gửi riêng mà `share:` không đáp ứng. Ví dụ standalone dưới đây minh họa public API. Khi ghép vào app thật, giữ bootstrap, theme, localization, routes và providers đang có; chỉ thêm observer/host vào đúng điểm. `debugPrint` ở đây chỉ để xem payload demo, app thật nối callback với flow báo lỗi của mình, hoặc gọi `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)` để dùng lại form có sẵn.
 
 ```dart
 import 'dart:convert';
@@ -93,7 +139,9 @@ Callback nhận context của marker, thuận tiện tìm Navigator chứa widge
 
 ## Production và kiểm tra
 
-Build production không truyền `FLUTTER_QA_INSPECTOR=true` (hoặc truyền `false`). Giữ recorder/observer và các phần QA do app tạo trong nhánh `BugInspector.enabledFromEnvironment` nếu muốn compiler bỏ chúng. Wrapper không chặn được việc evaluate đối số của app: `BugBlocScope(bloc: context.read<T>())` vẫn chạy `read` ở production, nên ưu tiên `.lazy`.
+Build production không truyền `FLUTTER_QA_INSPECTOR=true` (hoặc truyền `false`). `FlutterQaInspector.install`/`wrap` đã tự kiểm tra hằng compile-time. Với host tùy chỉnh, giữ recorder/observer và các phần QA do app tạo trong nhánh `BugInspector.enabledFromEnvironment` nếu muốn compiler bỏ chúng. Wrapper không chặn được việc evaluate đối số của app: `BugBlocScope(bloc: context.read<T>())` vẫn chạy `read` ở production, nên ưu tiên `.lazy`.
+
+`BugReportPage`/`BugReportBundle` dùng trực tiếp vẫn dựng form/đóng gói ZIP khi thiếu define; gate lối mở riêng bằng `BugInspector.enabledFromEnvironment`. Không dùng số đo binary trước `0.8.0` làm bằng chứng kích thước hiện tại sau khi thêm dependency plugin.
 
 Với source package trong repo, chạy các kiểm tra sau từ thư mục `flutter_qa_inspector/` khi cần verify thay đổi code package, không phải từ root chứa `skills/`:
 
@@ -105,4 +153,4 @@ flutter test --dart-define=FLUTTER_QA_INSPECTOR=true
 
 Hai lệnh test chạy các nhóm build mode khác nhau và skip nhóm còn lại. Với tích hợp chỉ ở host app, ưu tiên checks của host và các test ảnh hưởng trực tiếp.
 
-Nguồn: [main example](../../../flutter_qa_inspector/example/lib/main.dart), [app builder và callback](../../../flutter_qa_inspector/example/lib/app.dart), [host API](../../../flutter_qa_inspector/lib/src/bug_inspector.dart).
+Nguồn: [main example](../../../flutter_qa_inspector/example/lib/main.dart), [app builder](../../../flutter_qa_inspector/example/lib/app.dart), [FlutterQaInspector](../../../flutter_qa_inspector/lib/src/flutter_qa_inspector_setup.dart), [BugReportPage](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart), [BugReportStrings](../../../flutter_qa_inspector/lib/src/report/bug_report_strings.dart), [host API](../../../flutter_qa_inspector/lib/src/bug_inspector.dart).

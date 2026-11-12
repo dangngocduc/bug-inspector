@@ -47,8 +47,8 @@ enum BugSelectionTrigger {
 ///
 /// The inspector only runs in builds made with
 /// `--dart-define=FLUTTER_QA_INSPECTOR=true`, see [enabledFromEnvironment].
-/// In any other build, this widget and every other widget of the package only
-/// return their child, so the app runs as if the package were not there.
+/// In any other build, this host and the [BugInspectable],
+/// [BugInspectablePage] and [BugBlocScope] markers only return their child.
 ///
 /// The host draws a floating control on top of the app. It is not part of the
 /// app content: it does not change the layout, it only takes the taps that

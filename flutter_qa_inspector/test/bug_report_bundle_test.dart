@@ -3,7 +3,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:flutter/painting.dart';
-import 'package:flutter_qa_inspector_example/bug_report_bundle.dart';
+import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final _png = Uint8List.fromList(<int>[0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
@@ -85,6 +85,7 @@ void main() {
     final params = bundle.toShareParams(sharePositionOrigin: origin);
 
     expect(params.text, 'Lỗi hiển thị');
+    expect(params.subject, 'Bug report: bug_x');
     expect(params.sharePositionOrigin, origin);
     expect(params.fileNameOverrides, ['bug_x.png', 'bug_x.zip']);
     expect(params.files!.map((file) => file.mimeType), [
@@ -107,5 +108,15 @@ void main() {
 
     expect(params.text, isNull);
     expect(params.fileNameOverrides, ['bug_x.zip']);
+  });
+
+  test('the subject can be localized', () {
+    final params = BugReportBundle(
+      name: 'bug_x',
+      description: '',
+      inspectorJson: const {},
+    ).toShareParams(subject: BugReportStrings.vi.shareSubject('bug_x'));
+
+    expect(params.subject, 'Báo lỗi: bug_x');
   });
 }

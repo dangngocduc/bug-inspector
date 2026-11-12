@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read the report ZIP emitted by the flutter_qa_inspector example flow."""
+"""Read the report ZIP emitted by BugReportPage of flutter_qa_inspector."""
 
 import argparse
 from collections import Counter

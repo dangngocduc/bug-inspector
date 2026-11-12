@@ -1,3 +1,42 @@
+## 0.8.0
+
+- The bug report flow moves from the example into the package, so an app
+  only adds the dependency and calls it:
+  - `FlutterQaInspector.install()` records the BLoC/Cubit timeline: a
+    `MultiBlocObserver` of the current `Bloc.observer` and a
+    `BugInspectorBlocObserver`, once. `FlutterQaInspector.recorder` is its
+    recorder.
+  - `FlutterQaInspector.wrap(child:)` (or `FlutterQaInspector.builder` as
+    `MaterialApp.builder`) hosts the inspector and, for every selection,
+    captures a screenshot and opens `BugReportPage`. Options: `enabled`,
+    `stateRecorder`, `strings`, `captureScreenshot`, `share`.
+  - Without the define, `install` does nothing and `wrap` returns its child.
+- `BugReportPage`: the Cupertino report form of the example, with the
+  full screen screenshot editor. `BugReportPage.open` pushes it on the root
+  navigator, as the `/qa-bug-report` route (the example used
+  `/bug-report`).
+- `BugReportBundle` and `BugReportShare`: the ZIP with `screenshot.png`,
+  `description.txt` and `inspector.json`, unchanged from the example.
+  `toShareParams` takes a `subject`, English by default (the example used a
+  Vietnamese subject).
+- `BugReportStrings`: the texts of the floating toolbar, the form and the
+  editor, with `en` and `vi`. `BugReportStrings.of(context)` picks `vi` for a
+  Vietnamese locale and `en` otherwise.
+- `BugInspectablePage.route(settings:)` marks the page of a route with the
+  route name as `id` and `label` (`unnamed_route` without a name).
+- The package exports `ShareParams`, `ShareResult`, `ShareResultStatus` and
+  `XFile` from `share_plus`, for a custom `share`.
+- New dependencies: `archive: ^4.0.0`, `bloc: ^9.2.0`,
+  `share_plus: >=12.0.0 <14.0.0`. Dart `>=3.4.0` and Flutter `>=3.29.0` are
+  now required. `share_plus` is a plugin: its native code is part of every
+  build of the app, production included.
+- Migration: apps that copied `bug_report_page.dart`,
+  `bug_report_bundle.dart` and `screenshot_annotation_page.dart` from the
+  example must delete them, since the names now clash with the package
+  (`ambiguous_import`). Replace the hand-written setup with
+  `FlutterQaInspector.install` and `FlutterQaInspector.wrap`, and drop the
+  app's own `archive` dependency if nothing else uses it.
+
 ## 0.7.0
 
 - `BugScreenshotEditor` zooms with two fingers, up to `maxZoom` (default 5,

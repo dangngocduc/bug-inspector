@@ -4,7 +4,7 @@ Mục tiêu: từ một report, agent hiểu tester gặp vấn đề gì, vùng
 
 ## Contract bundle hiện tại
 
-Đối chiếu [BugReportBundle](../../../flutter_qa_inspector/example/lib/bug_report_bundle.dart) và phần `_inspectorJson`, `_highlight`, `_send` trong [BugReportPage](../../../flutter_qa_inspector/example/lib/bug_report_page.dart). Core package cung cấp dữ liệu/ảnh; flow report của example đóng gói ZIP theo format này:
+Đối chiếu [BugReportBundle](../../../flutter_qa_inspector/lib/src/report/bug_report_bundle.dart) và phần `_inspectorJson`, `_highlight`, `_send` trong [BugReportPage](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart). Từ `0.8.0`, `BugReportPage` (mở bởi `FlutterQaInspector.wrap`) là public API của package và đóng gói ZIP theo format này; report do flow của example trước `0.8.0` có cùng format. Host dùng `share:` tùy chỉnh (upload/ticket) vẫn nhận cùng PNG và ZIP; host tự dựng form riêng có thể khác format, khi đó đối chiếu code của host:
 
 | Entry tại root ZIP | Nội dung |
 | --- | --- |
@@ -12,7 +12,7 @@ Mục tiêu: từ một report, agent hiểu tester gặp vấn đề gì, vùng
 | `inspector.json` | Bắt buộc, UTF-8 JSON object có `inspector: selection.toJson()` và `screenshot` metadata khi có ảnh. |
 | `screenshot.png` | Tùy chọn; PNG đã render highlight của widget và các rectangle tester đánh dấu. Report không có ảnh vẫn hợp lệ. |
 
-Tên ZIP mặc định `bug_<selection-id>_<yyyyMMdd_HHmmss>.zip`, thời gian UTC lúc chọn, ID được sanitize cho tên file. Đọc ID/timestamp chính xác từ JSON; không parse filename làm nguồn chính. Không có trường format version trong payload hiện tại.
+Tên ZIP mặc định `bug_<selection-id>_<yyyyMMdd_HHmmss>.zip` (`BugReportBundle.nameFor`), thời gian UTC lúc chọn, ID được sanitize cho tên file; share sheet gửi kèm `<name>.png` cùng ảnh với `screenshot.png`, `text` là mô tả đã trim và `subject` theo `BugReportStrings.shareSubject`. Với `BugInspectablePage.route`, `inspector.id` là tên route (ví dụ `/teacher/home`) và `source.file` thường là file navigator. Đọc ID/timestamp chính xác từ JSON; không parse filename làm nguồn chính. Không có trường format version trong payload hiện tại.
 
 Ví dụ cấu trúc `inspector.json` rút gọn nhưng hợp lệ; arrays thực tế có thể chứa nhiều snapshots/records:
 

@@ -70,6 +70,21 @@ MaterialPageRoute<void> inspectedCatalogRoute(Widget page) =>
     );
 ```
 
+Khi app dựng route bằng `onGenerateRoute` có `RouteSettings.name`, dùng `BugInspectablePage.route` một lần ở navigator thay vì gắn marker vào từng page. `id` và `label` là `settings.name`; route không tên có id `BugInspectablePage.unnamedRouteId` (`unnamed_route`). `sourceFile` là file định nghĩa route (navigator), không phải file page.
+
+```dart
+Route<void> onGenerateRoute(RouteSettings settings) => MaterialPageRoute<void>(
+      settings: settings,
+      builder: (_) => BugInspectablePage.route(
+        settings: settings,
+        sourceFile: 'lib/app_navigator.dart',
+        child: pageFor(settings),
+      ),
+    );
+```
+
+`pageFor` là hàm chọn page sẵn có của host. Dùng constructor thường khi cần `id`/`label` ổn định khác tên route, hoặc route name chứa tham số động (ví dụ `/order/123`) làm id thay đổi theo dữ liệu.
+
 Với `go_router`, trả `BugInspectablePage(id: ..., child: page)` từ builder/page content đang có; giữ path, params, redirect và provider ownership. Không thêm dependency router mới chỉ để inspect. `routeName` lấy từ `RouteSettings.name` thực tế; `id` của marker không tự đặt route name.
 
 Tester bật launcher rồi chọn **Select screen**. `selection.kind == BugSelectionKind.page`; marker page không làm mọi widget con tự chọn riêng được. Muốn chọn cả page lẫn từng control thì thêm `BugInspectable` cho những control đó.

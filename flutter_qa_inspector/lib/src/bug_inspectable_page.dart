@@ -43,6 +43,38 @@ class BugInspectablePage extends StatelessWidget
     this.borderWidth,
   }) : assert(borderWidth == null || borderWidth >= 0);
 
+  /// Marks the page of a route, with the route name as [id] and [label].
+  ///
+  /// Use it where the app builds its routes, so every screen is selectable
+  /// without a marker in each page:
+  ///
+  /// ```dart
+  /// onGenerateRoute: (settings) => MaterialPageRoute<void>(
+  ///   settings: settings,
+  ///   builder: (_) => BugInspectablePage.route(
+  ///     settings: settings,
+  ///     sourceFile: 'lib/app_navigator.dart',
+  ///     child: pageFor(settings),
+  ///   ),
+  /// ),
+  /// ```
+  ///
+  /// A route without a name gets [unnamedRouteId].
+  BugInspectablePage.route({
+    super.key,
+    required RouteSettings settings,
+    required this.child,
+    this.sourceFile,
+    this.sourceLine,
+    this.borderColor,
+    this.borderWidth,
+  })  : assert(borderWidth == null || borderWidth >= 0),
+        id = settings.name ?? unnamedRouteId,
+        label = settings.name ?? unnamedRouteId;
+
+  /// The [id] of [BugInspectablePage.route] for a route without a name.
+  static const String unnamedRouteId = 'unnamed_route';
+
   /// A stable identifier stored in [BugWidgetSelection.id], for example
   /// `checkout`.
   @override

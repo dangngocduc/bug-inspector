@@ -1,56 +1,78 @@
-import 'dart:async';
-import 'dart:convert';
+part of '../../flutter_qa_inspector.dart';
 
-import 'package:flutter/cupertino.dart';
-// The only Material widget of the report: Cupertino has no selectable text.
-import 'package:flutter/material.dart' show SelectableText;
-import 'package:flutter/services.dart';
-import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
-import 'package:share_plus/share_plus.dart';
-
-import 'bug_report_bundle.dart';
-import 'screenshot_annotation_page.dart';
-
-/// A demo bug report, presented full screen above the app like an iOS modal.
+/// A ready-made bug report form, presented full screen above the app like an
+/// iOS modal.
 ///
-/// The page has its own [Navigator]. The report form is its first page, and
-/// [ScreenshotAnnotationPage] opens above the form in that navigator, so the
-/// app's navigator only sees one route for the whole report. The back button
-/// and the back gesture close the pages of the report's navigator first, then
-/// the report itself. Leaving a form that has a description or rectangles
-/// asks first.
+/// The form shows the selected widget or screen, the screenshot, a
+/// description field and the inspector JSON. Tapping the screenshot opens a
+/// full screen [BugScreenshotEditor] where the tester draws rectangles.
+/// Sending zips the screenshot (with the selected widget outlined and the
+/// rectangles drawn on it), the description and the inspector JSON, then
+/// shares the screenshot, the ZIP and the description, see [BugReportBundle].
 ///
-/// The report is styled with Cupertino widgets and its own
-/// [CupertinoThemeData], so it looks like an iOS sheet whatever the theme of
-/// the app, and follows the light or dark mode of the device.
+/// The page has its own [Navigator]: the form is its first page and the
+/// editor opens above it, so the app's navigator only sees one route for the
+/// whole report. The back button and the back gesture close the editor first,
+/// then the report. Leaving a form that has a description or rectangles asks
+/// first. A dismissed share sheet keeps the report open, a failed share shows
+/// the error.
+///
+/// The report is styled with Cupertino widgets and its own [theme], so it
+/// looks the same whatever the theme of the app, and follows the light or
+/// dark mode of the device.
+///
+/// `FlutterQaInspector.wrap` opens it for every selection. To open it from
+/// your own [BugInspector.onWidgetSelected]:
+///
+/// ```dart
+/// onWidgetSelected: (widgetContext, selection) async {
+///   final screenshot = await BugInspector.captureScreenshot(widgetContext);
+///   if (!widgetContext.mounted) return;
+///   await BugReportPage.open(
+///     widgetContext,
+///     selection: selection,
+///     screenshot: screenshot,
+///   );
+/// },
+/// ```
 class BugReportPage extends StatefulWidget {
+  /// Creates a bug report form for [selection].
   const BugReportPage({
     super.key,
     required this.selection,
     this.screenshot,
+    this.strings,
     this.share,
   });
 
   /// The name of the route that [open] pushes.
-  static const String routeName = '/bug-report';
+  static const String routeName = '/qa-bug-report';
 
-  /// The theme of the report: not based on the Material theme of the app,
-  /// system colors, and the brightness of the device.
+  /// The theme of the report: not based on the theme of the app, system
+  /// colors, and the brightness of the device.
   static const CupertinoThemeData theme = CupertinoThemeData();
 
+  /// The selected widget or screen.
   final BugWidgetSelection selection;
+
+  /// The screenshot taken before the report opened, or `null` for a report
+  /// without an image.
   final BugScreenshot? screenshot;
 
-  /// Opens the share sheet when the tester sends the report.
-  /// [SharePlus.share] when `null`.
+  /// The texts of the report. [BugReportStrings.of] when `null`.
+  final BugReportStrings? strings;
+
+  /// Sends the report. `SharePlus.instance.share` when `null`.
   final BugReportShare? share;
 
   /// Opens the report on the root navigator, so it covers the whole app even
-  /// when the selected widget is inside a nested navigator.
+  /// when the selected widget is inside a nested navigator. The future
+  /// completes when the report closes.
   static Future<void> open(
     BuildContext context, {
     required BugWidgetSelection selection,
     BugScreenshot? screenshot,
+    BugReportStrings? strings,
     BugReportShare? share,
   }) {
     return Navigator.of(context, rootNavigator: true).push<void>(
@@ -63,6 +85,7 @@ class BugReportPage extends StatefulWidget {
         builder: (_) => BugReportPage(
           selection: selection,
           screenshot: screenshot,
+          strings: strings,
           share: share,
         ),
       ),
@@ -82,6 +105,7 @@ class _BugReportPageState extends State<BugReportPage> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = widget.strings ?? BugReportStrings.of(context);
     return CupertinoTheme(
       data: BugReportPage.theme,
       child: Builder(
@@ -102,6 +126,7 @@ class _BugReportPageState extends State<BugReportPage> {
                 builder: (_) => _BugReportForm(
                   selection: widget.selection,
                   screenshot: widget.screenshot,
+                  strings: strings,
                   share: widget.share ?? SharePlus.instance.share,
                   onClose: _close,
                 ),
@@ -114,19 +139,19 @@ class _BugReportPageState extends State<BugReportPage> {
   }
 }
 
-/// The first page of the report's navigator. Sending the report zips the
-/// screenshot, the description and the inspector JSON, then shares the
-/// screenshot, the zip and the description, see [BugReportBundle].
+/// The first page of the report's navigator.
 class _BugReportForm extends StatefulWidget {
   const _BugReportForm({
     required this.selection,
     required this.screenshot,
+    required this.strings,
     required this.share,
     required this.onClose,
   });
 
   final BugWidgetSelection selection;
   final BugScreenshot? screenshot;
+  final BugReportStrings strings;
   final BugReportShare share;
 
   /// Closes the whole report.
@@ -143,17 +168,25 @@ class _BugReportFormState extends State<_BugReportForm> {
   final _annotations = BugScreenshotAnnotationController();
 
   /// Whether the report is being zipped or the share sheet is open.
-  var _sending = false;
+  final _sending = ValueNotifier<bool>(false);
 
   /// Whether the copy button shows that the JSON was copied.
-  var _copied = false;
+  final _copied = ValueNotifier<bool>(false);
   Timer? _copiedTimer;
+
+  /// The selection does not change: its JSON is encoded once.
+  late final String _payload =
+      const JsonEncoder.withIndent('  ').convert(widget.selection.toJson());
+
+  BugReportStrings get _strings => widget.strings;
 
   @override
   void dispose() {
     _copiedTimer?.cancel();
     _description.dispose();
     _annotations.dispose();
+    _sending.dispose();
+    _copied.dispose();
     super.dispose();
   }
 
@@ -172,7 +205,8 @@ class _BugReportFormState extends State<_BugReportForm> {
           },
       };
 
-  Map<String, Object?> get report => {
+  /// What the copy button copies.
+  Map<String, Object?> get _report => {
         'description': _description.text,
         ..._inspectorJson,
       };
@@ -186,7 +220,7 @@ class _BugReportFormState extends State<_BugReportForm> {
   /// Closes the report, after asking when the tester would lose their
   /// description or rectangles.
   Future<void> _cancel() async {
-    if (_sending) return;
+    if (_sending.value) return;
     if (!_hasChanges) {
       widget.onClose();
       return;
@@ -198,19 +232,19 @@ class _BugReportFormState extends State<_BugReportForm> {
       builder: (context) => CupertinoTheme(
         data: BugReportPage.theme,
         child: CupertinoActionSheet(
-          title: const Text('Bỏ báo lỗi này?'),
-          message: const Text('Mô tả và các vùng đã đánh dấu sẽ bị xóa.'),
+          title: Text(_strings.discardTitle),
+          message: Text(_strings.discardMessage),
           actions: [
             CupertinoActionSheetAction(
               isDestructiveAction: true,
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Bỏ báo lỗi'),
+              child: Text(_strings.discardConfirm),
             ),
           ],
           cancelButton: CupertinoActionSheetAction(
             isDefaultAction: true,
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Tiếp tục chỉnh sửa'),
+            child: Text(_strings.keepEditing),
           ),
         ),
       ),
@@ -223,35 +257,34 @@ class _BugReportFormState extends State<_BugReportForm> {
     final screenshot = widget.screenshot;
     if (screenshot == null) return;
     FocusScope.of(context).unfocus();
-    ScreenshotAnnotationPage.open(
+    _ScreenshotAnnotationPage.open(
       context,
       screenshot: screenshot,
       controller: _annotations,
+      strings: _strings,
       highlight: _highlight,
     );
   }
 
   Future<void> _copyJson() async {
-    await Clipboard.setData(ClipboardData(text: jsonEncode(report)));
+    await Clipboard.setData(ClipboardData(text: jsonEncode(_report)));
     if (!mounted) return;
-    HapticFeedback.lightImpact();
-    setState(() => _copied = true);
+    unawaited(HapticFeedback.lightImpact());
+    _copied.value = true;
     _copiedTimer?.cancel();
     _copiedTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _copied = false);
+      if (mounted) _copied.value = false;
     });
   }
 
   /// Zips the report and opens the share sheet next to [origin], the send
   /// button in global logical pixels.
   Future<void> _send(Rect? origin) async {
-    if (_sending) return;
+    if (_sending.value) return;
     FocusScope.of(context).unfocus();
-    setState(() => _sending = true);
+    _sending.value = true;
     try {
       final screenshot = widget.screenshot;
-      // The image the tester sees: the selected widget outlined and their
-      // rectangles drawn on it.
       final png = screenshot == null
           ? null
           : await screenshot.toAnnotatedPng(
@@ -268,9 +301,12 @@ class _BugReportFormState extends State<_BugReportForm> {
         screenshotPng: png,
       );
       final result = await widget.share(
-        bundle.toShareParams(sharePositionOrigin: origin),
+        bundle.toShareParams(
+          sharePositionOrigin: origin,
+          subject: _strings.shareSubject(bundle.name),
+        ),
       );
-      // Dismissing the share sheet keeps the report, to share it again.
+      // A share sheet closed without sharing keeps the report, to send again.
       if (mounted && result.status != ShareResultStatus.dismissed) {
         widget.onClose();
       }
@@ -282,13 +318,13 @@ class _BugReportFormState extends State<_BugReportForm> {
           builder: (context) => CupertinoTheme(
             data: BugReportPage.theme,
             child: CupertinoAlertDialog(
-              title: const Text('Không chia sẻ được báo lỗi'),
+              title: Text(_strings.shareFailed),
               content: Text('$error'),
               actions: [
                 CupertinoDialogAction(
                   isDefaultAction: true,
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK'),
+                  child: Text(_strings.ok),
                 ),
               ],
             ),
@@ -296,51 +332,52 @@ class _BugReportFormState extends State<_BugReportForm> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _sending = false);
+      if (mounted) _sending.value = false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final strings = _strings;
     final selection = widget.selection;
     final screenshot = widget.screenshot;
-    final payload =
-        const JsonEncoder.withIndent('  ').convert(selection.toJson());
     final isPage = selection.kind == BugSelectionKind.page;
 
     final scaffold = CupertinoPageScaffold(
       backgroundColor: CupertinoColors.systemGroupedBackground,
       navigationBar: CupertinoNavigationBar(
-        // The form is the first page of the report's navigator, so there is
-        // nothing to go back to there: this button closes the whole report.
-        leading: CupertinoButton(
-          padding: EdgeInsets.zero,
-          onPressed: _sending ? null : _cancel,
-          child: const Text('Hủy'),
+        leading: ValueListenableBuilder<bool>(
+          valueListenable: _sending,
+          builder: (context, sending, _) => CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: sending ? null : _cancel,
+            child: Text(strings.cancel),
+          ),
         ),
-        middle: const Text('Báo lỗi'),
-        trailing: _sending
-            ? const CupertinoActivityIndicator()
-            // The builder's context is the button: iPad anchors the share
-            // sheet to it.
-            : Builder(
-                builder: (buttonContext) => CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () => _send(_globalRect(buttonContext)),
-                  child: const Text(
-                    'Gửi',
-                    style: TextStyle(fontWeight: FontWeight.w600),
+        middle: Text(strings.title),
+        trailing: ValueListenableBuilder<bool>(
+          valueListenable: _sending,
+          builder: (context, sending, _) => sending
+              ? const CupertinoActivityIndicator()
+              // The context of this builder is the button: iPad anchors the
+              // share sheet to it.
+              : Builder(
+                  builder: (buttonContext) => CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _send(_globalRect(buttonContext)),
+                    child: Text(
+                      strings.send,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
                   ),
                 ),
-              ),
+        ),
       ),
-      // The list scrolls under the translucent navigation bar: it gets the
-      // height of the bar and the safe areas as padding.
       child: ListView(
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         children: [
           CupertinoListSection.insetGrouped(
-            header: const _SectionHeader('Đối tượng'),
+            header: _ReportSectionHeader(strings.sectionTarget),
             children: [
               CupertinoListTile(
                 leading: Icon(
@@ -354,42 +391,45 @@ class _BugReportFormState extends State<_BugReportForm> {
                       ? selection.widgetType
                       : '${selection.id} · ${selection.widgetType}',
                 ),
-                additionalInfo: Text(isPage ? 'Màn hình' : 'Widget'),
+                additionalInfo: Text(
+                  isPage ? strings.kindScreen : strings.kindWidget,
+                ),
               ),
             ],
           ),
           if (screenshot != null)
             CupertinoListSection.insetGrouped(
-              header: const _SectionHeader('Ảnh chụp màn hình'),
+              header: _ReportSectionHeader(strings.sectionScreenshot),
               footer: ListenableBuilder(
                 listenable: _annotations,
                 builder: (context, _) {
                   final count = _annotations.annotations.length;
-                  return _SectionFooter(
+                  return _ReportSectionFooter(
                     count == 0
-                        ? 'Chạm vào ảnh để đánh dấu vùng lỗi'
-                        : 'Đã đánh dấu $count vùng · Chạm vào ảnh để sửa',
+                        ? strings.annotateHint
+                        : strings.annotatedCount(count),
                   );
                 },
               ),
               children: [
                 Padding(
                   padding: const EdgeInsets.all(12),
-                  child: _ScreenshotPreview(
+                  child: _ReportScreenshotPreview(
                     screenshot: screenshot,
                     annotations: _annotations,
                     highlight: _highlight,
+                    strings: strings,
                     onTap: _annotate,
                   ),
                 ),
               ],
             ),
           CupertinoListSection.insetGrouped(
-            header: const _SectionHeader('Mô tả'),
+            header: _ReportSectionHeader(strings.sectionDescription),
             children: [
               CupertinoTextField.borderless(
                 controller: _description,
-                placeholder: 'Lỗi gì xảy ra, và các bước để tái hiện',
+                placeholder: strings.descriptionPlaceholder,
                 minLines: 3,
                 maxLines: 8,
                 textCapitalization: TextCapitalization.sentences,
@@ -404,27 +444,32 @@ class _BugReportFormState extends State<_BugReportForm> {
           CupertinoListSection.insetGrouped(
             header: Row(
               children: [
-                const Expanded(child: _SectionHeader('Payload')),
+                Expanded(
+                  child: _ReportSectionHeader(strings.sectionPayload),
+                ),
                 CupertinoButton(
                   sizeStyle: CupertinoButtonSize.small,
                   padding: EdgeInsets.zero,
                   minimumSize: Size.zero,
                   onPressed: _copyJson,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        _copied
-                            ? CupertinoIcons.checkmark_alt
-                            : CupertinoIcons.doc_on_doc,
-                        size: 16,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _copied ? 'Đã sao chép' : 'Sao chép JSON',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                    ],
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _copied,
+                    builder: (context, copied, _) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          copied
+                              ? CupertinoIcons.checkmark_alt
+                              : CupertinoIcons.doc_on_doc,
+                          size: 16,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          copied ? strings.copied : strings.copyJson,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -432,8 +477,10 @@ class _BugReportFormState extends State<_BugReportForm> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(16),
+                // The only Material widget of the report: Cupertino has no
+                // selectable text.
                 child: SelectableText(
-                  payload,
+                  _payload,
                   style: TextStyle(
                     fontFamily: 'Menlo',
                     fontFamilyFallback: const ['Courier', 'monospace'],
@@ -449,13 +496,13 @@ class _BugReportFormState extends State<_BugReportForm> {
       ),
     );
 
-    // On the form, the back button and the back gesture are the cancel
-    // button: they ask before losing the description or the rectangles.
+    // The back button and the back gesture on the form act as the cancel
+    // button: they ask before the description or the rectangles are lost.
     return ListenableBuilder(
-      listenable: Listenable.merge([_description, _annotations]),
+      listenable: Listenable.merge([_description, _annotations, _sending]),
       child: scaffold,
       builder: (context, child) => PopScope<void>(
-        canPop: !_sending && !_hasChanges,
+        canPop: !_sending.value && !_hasChanges,
         onPopInvokedWithResult: (didPop, _) {
           if (!didPop) _cancel();
         },
@@ -465,10 +512,8 @@ class _BugReportFormState extends State<_BugReportForm> {
   }
 }
 
-/// The title above a group of the form, in the small grey capitals of the
-/// grouped lists of iOS.
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader(this.text);
+class _ReportSectionHeader extends StatelessWidget {
+  const _ReportSectionHeader(this.text);
 
   final String text;
 
@@ -486,9 +531,8 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// The hint below a group of the form.
-class _SectionFooter extends StatelessWidget {
-  const _SectionFooter(this.text);
+class _ReportSectionFooter extends StatelessWidget {
+  const _ReportSectionFooter(this.text);
 
   final String text;
 
@@ -512,19 +556,21 @@ Rect? _globalRect(BuildContext context) {
   return box.localToGlobal(Offset.zero) & box.size;
 }
 
-/// Shows the screenshot with the selected widget and the tester's
-/// rectangles. Tapping the image opens the editor.
-class _ScreenshotPreview extends StatelessWidget {
-  const _ScreenshotPreview({
+/// The screenshot with the selected widget and the tester's rectangles. A tap
+/// opens the editor.
+class _ReportScreenshotPreview extends StatelessWidget {
+  const _ReportScreenshotPreview({
     required this.screenshot,
     required this.annotations,
     required this.highlight,
+    required this.strings,
     required this.onTap,
   });
 
   final BugScreenshot screenshot;
   final BugScreenshotAnnotationController annotations;
   final Rect? highlight;
+  final BugReportStrings strings;
   final VoidCallback onTap;
 
   @override
@@ -535,8 +581,7 @@ class _ScreenshotPreview extends StatelessWidget {
         child: Semantics(
           container: true,
           button: true,
-          label: 'Đánh dấu trên ảnh',
-          // The badge only repeats the label.
+          label: strings.annotateTitle,
           excludeSemantics: true,
           onTap: onTap,
           child: GestureDetector(
@@ -552,12 +597,10 @@ class _ScreenshotPreview extends StatelessWidget {
                     highlight: highlight,
                     readOnly: true,
                   ),
-                  // Shows that the image opens the editor, like the markup
-                  // button of iOS.
-                  const Positioned(
+                  Positioned(
                     right: 8,
                     bottom: 8,
-                    child: _MarkupBadge(),
+                    child: _MarkupBadge(label: strings.markup),
                   ),
                 ],
               ),
@@ -570,7 +613,9 @@ class _ScreenshotPreview extends StatelessWidget {
 }
 
 class _MarkupBadge extends StatelessWidget {
-  const _MarkupBadge();
+  const _MarkupBadge({required this.label});
+
+  final String label;
 
   @override
   Widget build(BuildContext context) {
@@ -584,15 +629,15 @@ class _MarkupBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
+            const Icon(
               CupertinoIcons.pencil_outline,
               size: 14,
               color: CupertinoColors.white,
             ),
-            SizedBox(width: 4),
+            const SizedBox(width: 4),
             Text(
-              'Đánh dấu',
-              style: TextStyle(
+              label,
+              style: const TextStyle(
                 color: CupertinoColors.white,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

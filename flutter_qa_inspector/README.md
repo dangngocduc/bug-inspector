@@ -1,10 +1,10 @@
 # flutter_qa_inspector
 
-Tester chọn một widget hoặc cả màn hình trên bản QA, package trả về thông tin widget/màn hình, state BLoC/Cubit và state của widget (`State` của `StatefulWidget`) tại thời điểm chọn, cùng timeline state gần nhất để đính kèm vào bug report.
+Tester chọn một widget hoặc cả màn hình trên bản QA, package trả về thông tin widget/màn hình, state BLoC/Cubit và state của widget (`State` của `StatefulWidget`) tại thời điểm chọn, cùng timeline state gần nhất để đính kèm vào bug report. Package có sẵn form báo lỗi (`BugReportPage`): vẽ khung lên ảnh chụp, nhập mô tả, rồi chia sẻ ảnh + ZIP qua share sheet.
 
-- Dart `>=3.3.0 <4.0.0`, Flutter `>=3.19.0`, `flutter_bloc: ^9.1.1`.
-- Ví dụ dùng `MultiBlocObserver` cần `bloc` từ 9.2.0 trở lên.
-- Chỉ chạy khi build với `--dart-define=FLUTTER_QA_INSPECTOR=true`. Thiếu define hoặc `=false` thì package không làm gì và gần như không có mặt trong binary, xem [Bản production](#bản-production).
+- Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`.
+- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `archive: ^4.0.0` (ZIP), `share_plus: >=12.0.0 <14.0.0` (share sheet).
+- Inspector chỉ bật khi build với `--dart-define=FLUTTER_QA_INSPECTOR=true`. Thiếu define hoặc `=false` thì tích hợp qua facade giữ nguyên app content, xem [Bản production](#bản-production).
 
 ## Luồng báo bug
 
@@ -12,18 +12,96 @@ Tester chọn một widget hoặc cả màn hình trên bản QA, package trả 
 2. Mọi `BugInspectable` có viền hồng, mọi `BugInspectablePage` có viền xanh. App ngừng nhận pointer (tap, cuộn, hover).
 3. Nút bug nổi mở ra thành thanh công cụ nổi. Tester chạm vào một vùng có viền để chọn widget, hoặc bấm **Select screen** trên thanh công cụ để chọn cả màn hình hiện tại. Inspector đo bounds, đọc state BLoC/Cubit và state của widget, rồi lấy timeline. Chạm ra ngoài các widget thì giữ nguyên chế độ chọn.
 4. Inspector tắt chế độ chọn (mặc định) rồi gọi `onWidgetSelected(widgetContext, selection)`. Nút ✕ trên thanh công cụ cho phép hủy.
+5. Với tích hợp nhanh, callback này chụp màn hình và mở `BugReportPage`. Tester vẽ khung, nhập mô tả rồi bấm **Send** để chia sẻ ảnh và file ZIP.
 
 ## Cài đặt
 
 ```yaml
 dependencies:
-  bloc: ^9.2.0
-  flutter_bloc: ^9.1.1
   flutter_qa_inspector:
-    path: ../flutter_qa_inspector
+    git:
+      url: https://github.com/dangngocduc/bug-inspector
+      path: flutter_qa_inspector
 ```
 
-## Tích hợp
+App không cần tự khai báo `archive` hay `share_plus` nếu không dùng trực tiếp các package đó. `share_plus` là plugin, nên native code của nó vẫn có trong mọi bản build, kể cả production. Khi chỉ mở form qua `FlutterQaInspector`, nhánh mở form bị compiler bỏ khi không có define.
+
+Đối chiếu native toolchain với version `share_plus` được resolve trong lockfile:
+
+- `12.0.0`: iOS 12+, macOS 10.14+; Android cần Java 17, Kotlin 2.2.0, AGP 8.12.1+ và Gradle 8.13+.
+- `13.3.1`: Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; yêu cầu Android như trên. Range dependency cho phép resolver chọn bản phù hợp SDK, nhưng deployment target native vẫn cần kiểm tra riêng.
+- iOS: thêm `NSPhotoLibraryAddUsageDescription` vào `ios/Runner/Info.plist` nếu dùng share sheet mặc định để tester có thể chọn **Save Image**. Package không thể tự thêm khóa này vào host. Form đã truyền vị trí nút gửi cho popover trên iPad.
+- Linux không hỗ trợ chia sẻ file qua `share_plus`; dùng `share:` riêng để gửi ZIP. Trên web, share file phụ thuộc browser và có thể chuyển sang download.
+
+Yêu cầu theo từng version: [share_plus 12.0.0](https://pub.dev/packages/share_plus/versions/12.0.0), [share_plus 13.3.1](https://pub.dev/packages/share_plus/versions/13.3.1).
+
+## Tích hợp nhanh
+
+Ba chỗ, không cần thêm file nào trong app:
+
+```dart
+import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
+
+void main() {
+  // Trước khi tạo BLoC/Cubit nào. Giữ observer sẵn có của app.
+  FlutterQaInspector.install();
+  runApp(const App());
+}
+
+MaterialApp(
+  // Hoặc, khi builder còn bọc widget khác:
+  // builder: (context, child) => FlutterQaInspector.wrap(child: child!),
+  builder: FlutterQaInspector.builder,
+  onGenerateRoute: (settings) => MaterialPageRoute<void>(
+    settings: settings,
+    // Mỗi route là một màn hình chọn được, id = tên route.
+    builder: (_) => BugInspectablePage.route(
+      settings: settings,
+      sourceFile: 'lib/app_navigator.dart',
+      child: pageFor(settings),
+    ),
+  ),
+);
+```
+
+Sau đó đánh dấu widget bằng `BugInspectable` và gắn state bằng `BugBlocScope`/`BugInspectableState` như phần dưới.
+
+- `FlutterQaInspector.install({stateRecorder})`: cài `MultiBlocObserver(Bloc.observer cũ + BugInspectorBlocObserver)` một lần; `FlutterQaInspector.recorder` là recorder đó. Thiếu define thì không làm gì.
+- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)`: dựng `BugInspector` (recorder mặc định là `FlutterQaInspector.recorder`), mỗi lần chọn thì chụp màn hình rồi mở `BugReportPage` trên root navigator. Thiếu define thì trả nguyên `child`.
+- `BugInspectablePage.route(settings:, child:, sourceFile:)`: `id` và `label` là `settings.name`, route không tên có id `unnamed_route` (`BugInspectablePage.unnamedRouteId`).
+
+### Chuỗi hiển thị
+
+`BugReportStrings` gồm chuỗi của thanh công cụ (`selectionHint`, `pageButtonLabel`), form và trang vẽ. Package có `BugReportStrings.en` và `.vi`; mặc định `BugReportStrings.of(context)` chọn `vi` khi `Localizations` là tiếng Việt, còn lại là `en`. App có l10n riêng truyền vào:
+
+```dart
+FlutterQaInspector.wrap(
+  child: child!,
+  strings: (context) => BugReportStrings.en.copyWith(
+    title: S.of(context).bugReportTitle,
+  ),
+)
+```
+
+### Gửi report đi nơi khác
+
+Mặc định **Send** gọi `SharePlus.instance.share`. Truyền `share:` để upload hoặc tạo ticket: hàm nhận `ShareParams` (`files` gồm PNG và ZIP, `text` là mô tả) và trả `ShareResult`. `ShareResultStatus.dismissed` giữ form mở để gửi lại, trạng thái khác đóng form, lỗi ném ra hiện dialog. `ShareParams`, `ShareResult`, `ShareResultStatus`, `XFile` được export lại nên app không cần import `share_plus`.
+
+### Form báo lỗi và file ZIP
+
+`BugReportPage` (style Cupertino, theme riêng, theo sáng/tối của máy) mở full-screen trên root navigator, có `Navigator` riêng nên Navigator của app chỉ thấy một route (`BugReportPage.routeName`, `/qa-bug-report`). Back đóng trang vẽ trước rồi mới tới form; form có mô tả hoặc khung thì hỏi trước khi bỏ. Gửi tạo `BugReportBundle`:
+
+| File | Nội dung |
+| --- | --- |
+| `screenshot.png` | Ảnh đã vẽ viền widget được chọn (không viền khi chọn màn hình) và các khung của tester. Chỉ có khi có ảnh chụp. |
+| `description.txt` | Mô tả tester nhập, giữ nguyên. |
+| `inspector.json` | `{"inspector": selection.toJson(), "screenshot": {...screenshot.toJson(), "annotations": [...]}}`; `screenshot` chỉ có khi có ảnh. |
+
+Tên file là `BugReportBundle.nameFor(selection.id, selection.capturedAtUtc)`, ví dụ `bug_counter.increment_20261112_093005`, share kèm `<name>.png` và `<name>.zip`. Nút **Copy JSON** chép `{"description": ..., ...inspector.json}`. Có thể mở form từ callback của riêng app bằng `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)`.
+
+## Tích hợp tùy chỉnh
+
+Khi app cần form hoặc luồng gửi riêng, dùng trực tiếp `BugInspector` và tự xử lý `onWidgetSelected`:
 
 ```dart
 void main() {
@@ -141,8 +219,9 @@ Define `FLUTTER_QA_INSPECTOR` là công tắc chính của package, đọc qua h
 
 | Thành phần | Khi không có define |
 | --- | --- |
+| `FlutterQaInspector` | `install` không đổi `Bloc.observer`, `recorder` là `null`; `wrap`/`builder` trả về chính `child`. |
 | `BugInspector` | Chỉ trả về `child`, bất kể `enabled`. Không có nút nổi, không có lớp nào bọc app, không tạo `InspectModeCubit`. |
-| `BugInspectable`, `BugInspectablePage` | Chỉ trả về `child`. Không đăng ký, không có render object hay `GlobalKey`. |
+| `BugInspectable`, `BugInspectablePage`, `BugInspectablePage.route` | Chỉ trả về `child`. Không đăng ký, không có render object hay `GlobalKey`. |
 | `BugBlocScope.lazy` | Chỉ trả về `child`, không bao giờ gọi `readBloc`. |
 | `BugInspectableState` | Mixin không override method nào của `State`, nên `State` chạy như khi không có mixin. `bugSnapshot` không bao giờ được gọi. |
 | `BugInspectorBlocObserver` | Không ghi gì, kể cả khi app vẫn cài nó vào `Bloc.observer`. |
@@ -150,20 +229,22 @@ Define `FLUTTER_QA_INSPECTOR` là công tắc chính của package, đọc qua h
 | `BugScreenshotEditor` | Dựng một hộp rỗng. |
 | `BugScreenshot.toAnnotatedPng` | Trả về `pngBytes` nguyên vẹn. |
 
-Vì là hằng số, compiler bỏ phần code của inspector khỏi bản build. Đo trên bản release Android arm64 của example: code của package trong `libapp.so` là 0,9 KB khi không có define (chỉ còn 4 widget trả về `child` và thông tin kiểu của mixin `BugInspectableState`) và 46 KB khi có define. Các chuỗi của inspector như `Open bug inspector` cũng không có trong binary, và `bugSnapshot` của app bị bỏ khỏi binary vì không có gì gọi tới.
+Vì là hằng số, compiler có thể bỏ nhánh inspector và form không được gọi. Các số đo Android arm64 trước `0.8.0` (0,9 KB khi thiếu define, 46 KB khi có define trong `libapp.so` của example) là baseline cũ, chưa đo lại sau khi đưa report và plugin vào package; không dùng chúng làm kích thước binary của bản hiện tại.
 
 Cái còn lại trên bản production: mỗi `BugInspectable`, `BugInspectablePage`, `BugBlocScope` và `BugInspector` thêm một element không có render object, nên layout, paint, hit test và semantics giữ nguyên. `test/production_build_test.dart` kiểm tra điều này: một app tích hợp đầy đủ có cùng render tree và semantics tree với app không dùng package.
 
-Những gì package không chặn được, vì là code của app:
+Các phần không được compile-time gate tự động:
 
 - Biểu thức truyền vào `BugBlocScope(bloc: ...)` vẫn chạy mỗi lần build. Ví dụ `context.read<T>()` sẽ tạo provider lazy sớm hơn. Dùng `BugBlocScope.lazy`.
-- Code QA của app như `BugStateRecorder()`, `MultiBlocObserver`, form báo lỗi hay `InspectModeCubit` tự tạo. Đặt chúng trong `if (BugInspector.enabledFromEnvironment)` để compiler bỏ đi.
+- Code QA của app như `BugStateRecorder()`, `MultiBlocObserver`, form báo lỗi riêng hay `InspectModeCubit` tự tạo. Đặt chúng trong `if (BugInspector.enabledFromEnvironment)` để compiler bỏ đi. `FlutterQaInspector` đã tự làm việc này.
+- Native code của plugin `share_plus` (dependency của package).
+- `BugReportPage` và `BugReportBundle` nếu app chủ động gọi trực tiếp: chúng vẫn dựng form/đóng gói report khi thiếu define. Đặt lối mở riêng trong nhánh `BugInspector.enabledFromEnvironment`; facade đã có gate này.
 - `context.read<InspectModeCubit>()` ném lỗi trên bản production. Dùng `BugInspector.maybeModeCubitOf(context)`.
 
 Checklist trước khi phát hành:
 
 1. Lệnh build production và CI không truyền `--dart-define=FLUTTER_QA_INSPECTOR=true`.
-2. Observer và recorder chỉ được tạo trong nhánh `if (BugInspector.enabledFromEnvironment)`.
+2. Observer và recorder chỉ được tạo qua `FlutterQaInspector.install()` hoặc trong nhánh `if (BugInspector.enabledFromEnvironment)`.
 3. Dùng `BugBlocScope.lazy` thay cho `BugBlocScope(bloc: context.read<T>())`.
 
 Trên bản QA, `enabled: false` tắt inspector giống như khi không có define, ví dụ cho một flavor. Quyết định giá trị này trước `runApp`: đổi nó lúc app đang chạy sẽ dựng lại nội dung app, mất route stack và state màn hình. Để ẩn công cụ lúc đang chạy, dùng `showLauncher` và `InspectModeCubit`.
@@ -172,10 +253,14 @@ Trên bản QA, `enabled: false` tắt inspector giống như khi không có def
 
 | Thành phần | Trách nhiệm |
 | --- | --- |
+| `FlutterQaInspector` | Tích hợp nhanh: `install()`, `wrap()`, `builder`, `recorder`. |
+| `BugReportPage` | Form báo lỗi có sẵn: target, ảnh chụp + trang vẽ, mô tả, JSON, gửi qua `share`. `open()` push lên root navigator. |
+| `BugReportBundle`, `BugReportShare` | ZIP `screenshot.png` + `description.txt` + `inspector.json`, `nameFor`, `toZip()`, `toShareParams()`. |
+| `BugReportStrings` | Chuỗi của thanh công cụ, form và trang vẽ: `en`, `vi`, `of(context)`, `copyWith`. |
 | `InspectModeCubit` | `InspectMode.disabled` / `InspectMode.selecting` qua `enable()`, `disable()`, `toggle()`. Gọi sau `close()` không ném lỗi. |
 | `BugInspector` | Cung cấp Cubit, giữ registry riêng cho subtree, vẽ widget nổi và lớp chọn, gọi callback khi chọn. `BugInspector.enabledFromEnvironment` là công tắc chính. |
 | `BugInspectable` | Đăng ký widget theo `id`, vẽ viền khi đang chọn. Có `label`, `sourceFile`, `sourceLine`, `borderColor`, `borderWidth`. Không có define hoặc ngoài host thì chỉ trả về `child`. |
-| `BugInspectablePage` | Đánh dấu cả màn hình. Cùng tham số như `BugInspectable`, viền riêng và được chọn bằng nút **Select screen**. |
+| `BugInspectablePage` | Đánh dấu cả màn hình. Cùng tham số như `BugInspectable`, viền riêng và được chọn bằng nút **Select screen**. `BugInspectablePage.route(settings:)` lấy `id`/`label` từ tên route. |
 | `BugBlocScope<S>`, `BugBlocScope<S>.lazy` | Gắn instance BLoC/Cubit và `snapshotBuilder` vào subtree. Bản `.lazy` chỉ đọc instance qua `readBloc` khi tester chọn widget. |
 | `BugInspectableState` | Mixin cho `State`. `bugSnapshot()` trả về các field của `State` dưới dạng JSON, chỉ được gọi khi tester chọn widget. |
 | `BugStateRecorder` | Queue trong bộ nhớ, mặc định 300 bản ghi, bỏ bản ghi cũ nhất khi đầy. |

@@ -1,6 +1,6 @@
 # Screenshot và annotation
 
-Đọc khi user cần ảnh đính kèm hoặc flow đánh dấu vùng lỗi; chỉ thêm marker thì không cần xây report/editor UI.
+Đọc khi user cần ảnh đính kèm hoặc flow đánh dấu vùng lỗi trong **form riêng** của host. `FlutterQaInspector.wrap` chụp ảnh trước khi mở `BugReportPage`; form có preview, trang editor full-screen, export PNG và ZIP ([integration.md](integration.md)). `BugReportPage.open` dùng trực tiếp nhận `screenshot:` đã chụp, không tự chụp. Khi host dùng facade, không tự dựng lại các bước dưới đây. Chỉ thêm marker thì không cần xây report/editor UI.
 
 ## Chụp trước khi mở form
 
@@ -104,4 +104,4 @@ Map<String, Object?> reportPayload({
 
 Truyền cùng `highlight`, `color`, `strokeWidth`, `highlightColor` ở editor và `toAnnotatedPng` nếu đã custom; nếu không ảnh export có thể khác preview. Không có annotations, highlight và status bar thì export trả PNG gốc. Build thiếu define cũng trả PNG gốc.
 
-Nếu user cần ZIP/share, tham khảo [BugReportBundle của example](../../../flutter_qa_inspector/example/lib/bug_report_bundle.dart) và [BugReportPage](../../../flutter_qa_inspector/example/lib/bug_report_page.dart); đây là app code dùng `archive`/`share_plus`, không phải public API package. Chỉ thêm dependencies/cấu hình platform khi thực sự triển khai flow đó, không bắt chúng thành điều kiện để inspect widget/page.
+Nếu user cần ZIP/share, dùng public API `BugReportPage` hoặc `BugReportBundle` (`nameFor`, `toZip()`, `toShareParams(sharePositionOrigin:, subject:)`) của package; không copy [BugReportPage](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart) hay [BugReportBundle](../../../flutter_qa_inspector/lib/src/report/bug_report_bundle.dart) vào app. `archive` và `share_plus` là dependency của package, host không cần khai báo. Form riêng vẫn có thể dựng `BugReportBundle` với cùng `inspectorJson` như snippet trên để giữ đúng [contract ZIP](bug-reports.md).

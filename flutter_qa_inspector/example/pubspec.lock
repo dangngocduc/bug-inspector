@@ -2,7 +2,7 @@
 # See https://dart.dev/tools/pub/glossary#lockfile
 packages:
   archive:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: archive
       sha256: de5ac590b8155e4e676088d714bd41ea620449a6adc0f7950c5073874b287ddb
@@ -26,7 +26,7 @@ packages:
     source: hosted
     version: "2.13.1"
   bloc:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: bloc
       sha256: e03b235924e4f509c27b5d6b2f949200e0a91149a9818b4f65eeb56662b75413
@@ -164,7 +164,7 @@ packages:
       path: ".."
       relative: true
     source: path
-    version: "0.7.0"
+    version: "0.8.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -408,7 +408,7 @@ packages:
     source: hosted
     version: "0.6.0"
   share_plus:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: share_plus
       sha256: db40767f130189d53f3ae8a6393c217ff4a492da1baff718a9873679c0c00224

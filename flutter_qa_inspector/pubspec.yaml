@@ -1,23 +1,29 @@
 name: flutter_qa_inspector
 description: >-
   QA-build inspector that lets testers pick a widget or a whole screen and
-  attach its info, BLoC/Cubit state snapshots and a recent state timeline to a
-  bug report.
-version: 0.7.0
+  attach its info, BLoC/Cubit state snapshots, a recent state timeline and an
+  annotated screenshot to a bug report, shared as a ZIP.
+version: 0.8.0
 publish_to: none
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
-  flutter: ">=3.19.0"
+  # share_plus 12 needs Dart 3.4. CupertinoButton.minimumSize, used by
+  # BugReportPage, is in Flutter 3.29.
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.29.0"
 
 dependencies:
+  # The ZIP of BugReportBundle.
+  archive: ^4.0.0
+  # FlutterQaInspector.install uses MultiBlocObserver, added in bloc 9.2.0.
+  bloc: ^9.2.0
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
+  # The share sheet of BugReportPage. 12.x keeps apps that pin it working.
+  share_plus: ">=12.0.0 <14.0.0"
 
 dev_dependencies:
-  # Tests use MultiBlocObserver, which was added in bloc 9.2.0.
-  bloc: ^9.2.0
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

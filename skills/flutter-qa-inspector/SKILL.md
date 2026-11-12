@@ -13,7 +13,7 @@ Giúp agent dùng public API của `flutter_qa_inspector` để tester chọn wi
 | --- | --- |
 | Nhận file ZIP để mô tả, phân tích hoặc sửa bug | [references/bug-reports.md](references/bug-reports.md) trước; dùng [scripts/read_bug_report.py](scripts/read_bug_report.py) để đọc đúng bundle |
 | Thư viện support gì, dữ liệu trả về và giới hạn | [references/capabilities.md](references/capabilities.md) |
-| Cài dependency, host, observer, QA/production build | [references/integration.md](references/integration.md) |
+| Cài dependency, tích hợp nhanh (`FlutterQaInspector`, form báo lỗi có sẵn), host tùy chỉnh, observer, QA/production build | [references/integration.md](references/integration.md) |
 | Thêm inspect widget/page, gắn BLoC/Cubit hoặc local `State` | [references/widget-page.md](references/widget-page.md) |
 | Chụp ảnh, preview, editor đánh dấu và xuất PNG | [references/screenshots.md](references/screenshots.md) |
 
@@ -32,6 +32,7 @@ Trong repo này, package nằm ở `flutter_qa_inspector/` tính từ root proje
 - [pubspec.yaml](../../flutter_qa_inspector/pubspec.yaml): version, SDK và dependencies thực tế.
 - [Public entrypoint](../../flutter_qa_inspector/lib/flutter_qa_inspector.dart): import duy nhất cho consumer, các API được khai báo trong những file `part` của nó.
 - [README](../../flutter_qa_inspector/README.md) và [app example](../../flutter_qa_inspector/example/lib/app.dart): hướng dẫn và luồng tích hợp đang có.
+- [Form báo lỗi và ZIP](../../flutter_qa_inspector/lib/src/report/): `BugReportPage`, `BugReportBundle`, `BugReportStrings`.
 
 Nếu skill được chuyển sang host repo khác, tìm dependency đang được host resolve qua `pubspec.yaml`, lockfile hoặc `.dart_tool/package_config.json`; không giữ nguyên đường dẫn local của repo này. Đối chiếu constructor và phần source liên quan khi version khác hoặc tài liệu mâu thuẫn. Không coi bản thiết kế implementation là bằng chứng một API đã tồn tại.
 
@@ -39,12 +40,13 @@ Nếu skill được chuyển sang host repo khác, tìm dependency đang đư�
 
 - Consumer import `package:flutter_qa_inspector/flutter_qa_inspector.dart`; dùng public wrappers thay vì copy implementation hoặc import `src/`.
 - Công tắc compile-time là `--dart-define=FLUTTER_QA_INSPECTOR=true`. `enabled: true` không bật được inspector nếu thiếu define. Không dùng tên flag cũ `QA_INSPECTOR`.
-- Giữ nguyên Navigator/Router, theme, providers, state và callbacks của app. Ghép `BugInspector` vào builder đang có và truyền tiếp `child`; không thay app bằng demo trong reference.
-- Thêm `BugInspectable` cho vùng widget, `BugInspectablePage` cho toàn màn hình. Wrapper không tự tìm source file, BLoC phụ thuộc hay field của `State`.
+- Mặc định tích hợp bằng `FlutterQaInspector.install()` (trước khi tạo BLoC/Cubit) và `FlutterQaInspector.wrap(child:)`/`.builder` trong `MaterialApp.builder`: có sẵn timeline, launcher, chụp ảnh, form báo lỗi, ZIP và share sheet. Không copy form/bundle vào host; host còn bản copy cũ thì xóa (trùng tên gây `ambiguous_import`).
+- Giữ nguyên Navigator/Router, theme, providers, state và callbacks của app. Ghép `wrap` (hoặc `BugInspector`) vào builder đang có và truyền tiếp `child`; không thay app bằng demo trong reference.
+- Thêm `BugInspectable` cho vùng widget, `BugInspectablePage` cho toàn màn hình; navigator dùng `onGenerateRoute` có tên route thì dùng `BugInspectablePage.route(settings:, child:)`. Wrapper không tự tìm source file, BLoC phụ thuộc hay field của `State`.
 - Dùng `BugBlocScope<S>.lazy` dưới provider và trên marker widget cần snapshot. Tái sử dụng instance của app; không tạo Cubit/Bloc riêng chỉ để inspect. Page selection còn đọc được các scope bên trong page.
 - Snapshot local state cần `with BugInspectableState<WidgetType>` trên `State` thật. Cả `bugSnapshot()` và `snapshotBuilder` phải đồng bộ, không thay đổi state, chỉ trả JSON-compatible values và bỏ secrets/dữ liệu cá nhân.
-- Khi cần timeline, cài observer trước khi tạo BLoC/Cubit, giữ observer đang có và truyền cùng một `BugStateRecorder` cho observer lẫn host. Timeline chỉ chứa tên kiểu và thời điểm, không phải lịch sử đầy đủ giá trị state.
-- `onWidgetSelected(widgetContext, selection)` là điểm nối với bug-report flow của app. Form, upload, tạo ticket, ZIP và share sheet không phải API có sẵn của package.
+- Khi cần timeline với host tùy chỉnh, cài observer trước khi tạo BLoC/Cubit, giữ observer đang có và truyền cùng một `BugStateRecorder` cho observer lẫn host (`FlutterQaInspector.install` đã làm việc này cho `wrap`). Timeline chỉ chứa tên kiểu và thời điểm, không phải lịch sử đầy đủ giá trị state.
+- Chuỗi hiển thị đi qua `strings:` (`BugReportStrings`, có sẵn `en`/`vi` theo locale); host có l10n thì map vào đó. Gửi report đi nơi khác (upload, ticket) qua `share:`. Chỉ dùng `BugInspector` + `onWidgetSelected(widgetContext, selection)` khi host cần form riêng; package không có dịch vụ upload hay tích hợp issue tracker.
 - Không cần thêm nút Inspect vào UI: host có launcher nổi. Menu QA riêng dùng `maybeModeCubitOf(context)?.enable()` từ context dưới host; tránh `context.read<InspectModeCubit>()` vì production không có Cubit đó.
 
 ## Kiểm tra và bàn giao

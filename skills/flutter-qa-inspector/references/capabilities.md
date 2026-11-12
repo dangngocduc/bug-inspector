@@ -1,15 +1,19 @@
 # Khả năng và giới hạn
 
-Đối chiếu với package `flutter_qa_inspector` version `0.7.0` trong repo này. Khi dùng version khác, kiểm tra lại public API thay vì suy ra từ bảng này.
+Đối chiếu với package `flutter_qa_inspector` version `0.8.0` trong repo này. Khi dùng version khác, kiểm tra lại public API thay vì suy ra từ bảng này.
 
 ## Chọn API
 
 | Nhu cầu | API | Hành vi cần biết |
 | --- | --- | --- |
-| Bật công cụ cho toàn app | `BugInspector` | Registry theo subtree, launcher nổi kéo được, toolbar chọn và callback. Thường đặt trong `MaterialApp.builder` hoặc `MaterialApp.router.builder`. |
+| Tích hợp nhanh có form báo lỗi | `FlutterQaInspector.install`, `FlutterQaInspector.wrap` / `.builder`, `FlutterQaInspector.recorder` | `install` cài observer timeline một lần; `wrap` dựng host và mở `BugReportPage` cho mỗi selection. Thiếu define: `install` không làm gì, `wrap` trả `child`. Xem [integration.md](integration.md). |
+| Form báo lỗi có sẵn | `BugReportPage`, `BugReportPage.open` | Cupertino, theme riêng, `Navigator` riêng trên root navigator (`/qa-bug-report`): target, preview + trang vẽ full-screen, mô tả, JSON + Copy JSON, Send. Hỏi trước khi bỏ form có thay đổi; share bị dismiss thì giữ form. |
+| Đóng gói/gửi report | `BugReportBundle`, `BugReportShare` | ZIP `screenshot.png`, `description.txt`, `inspector.json`; `nameFor`, `toZip()`, `toShareParams()`. `share:` tùy chỉnh để upload/tạo ticket thay share sheet. |
+| Chuỗi hiển thị | `BugReportStrings` (`en`, `vi`, `of`, `copyWith`), `BugReportStringsBuilder` | Chuỗi cho toolbar, form, editor. `of` chọn `vi` theo locale, mặc định `en`. |
+| Bật công cụ cho toàn app (tùy chỉnh) | `BugInspector` | Registry theo subtree, launcher nổi kéo được, toolbar chọn và callback. Thường đặt trong `MaterialApp.builder` hoặc `MaterialApp.router.builder`. |
 | Điều khiển từ menu QA | `InspectModeCubit`, `BugInspector.maybeModeCubitOf` | `enable()`, `disable()`, `toggle()`; accessor trả `null` ngoài host đang bật hoặc khi thiếu define. |
 | Chọn một vùng UI | `BugInspectable` | Marker có `id` bắt buộc; `label`, `sourceFile`, `sourceLine` và border tùy chọn. `widgetType` là runtime type của `child`. |
-| Chọn toàn màn hình | `BugInspectablePage` | Dùng **Select screen**. Page/tab được vẽ trên cùng thắng; page lồng trong shell thắng page bao ngoài. Dialog/bottom sheet không tự trở thành page. |
+| Chọn toàn màn hình | `BugInspectablePage`, `BugInspectablePage.route` | `.route(settings:)` lấy `id`/`label` từ tên route (`unnamed_route` khi không tên). Dùng **Select screen**. Page/tab được vẽ trên cùng thắng; page lồng trong shell thắng page bao ngoài. Dialog/bottom sheet không tự trở thành page. |
 | Đọc BLoC/Cubit hiện tại | `BugBlocScope<S>.lazy` | Khai báo instance và serializer, chỉ đọc khi chọn. Bản `BugBlocScope(bloc: ...)` cũng có, nhưng biểu thức đối số vẫn chạy lúc build. |
 | Đọc local widget state | `BugInspectableState<T>` | Mixin trên `State<T>`, override `bugSnapshot()`. Chỉ thu những field được khai báo tường minh. |
 | Timeline gần thời điểm chọn | `BugStateRecorder`, `BugInspectorBlocObserver` | Queue RAM mặc định 300 records; host lấy 30 giây gần nhất theo `historyWindow`. Observer có `filter` và bỏ qua `InspectModeCubit`. |
@@ -18,7 +22,7 @@
 | Bổ sung status bar cho ảnh | `BugStatusBar`, `BugStatusBarStyle` | `captureScreenshot(statusBar: true)` mặc định thêm metadata status bar giả khi chụp dưới top safe area trên Android/iOS. Editor và export vẽ nó; pin/sóng/Wi-Fi là mô phỏng, không phải telemetry. |
 | Đánh dấu vùng trên ảnh | `BugScreenshotEditor`, `BugScreenshotAnnotationController`, `BugScreenshotAnnotation` | Vẽ, chọn, kéo, resize, xóa rectangle; pinch zoom/pan, reset zoom; `readOnly` cho preview. Controller do app sở hữu và dispose. |
 | Xuất ảnh đã đánh dấu | `BugScreenshot.toAnnotatedPng` | Render highlight và rectangles vào PNG; truyền style giống editor khi có custom style. |
-| Hiểu report ZIP được export | Flow `BugReportPage` / `BugReportBundle` của example | Agent đọc ảnh, mô tả và inspector payload theo [bug-reports.md](bug-reports.md); đây là format report của app tích hợp, không phải API export ZIP trong core package. |
+| Hiểu report ZIP được export | `BugReportPage` / `BugReportBundle` | Agent đọc ảnh, mô tả và inspector payload theo [bug-reports.md](bug-reports.md). Host có form riêng có thể xuất format khác. |
 | Automation bằng widget key | `BugInspector.launcherKey`, `exitButtonKey`, `pageButtonKey` | Editor có thêm `deleteButtonKey`, `resetZoomButtonKey`. |
 
 Khi inspect mode bật, app bên dưới ngừng nhận pointer; tap chọn không gọi action của widget. Border được vẽ foreground mà không đổi kích thước/padding. Tap ngoài marker giữ mode, trừ khi host bật `selectPageOnEmptyTap`.
@@ -38,15 +42,17 @@ Snapshot có `captureErrorType` và `state: {}` khi serializer ném lỗi hoặc
 
 Observer ghi `created`, `closed`, `error` cho BLoC/Cubit; `event`, `transition` cho BLoC; `change` cho Cubit. Records lưu type names, không lưu state/event values, message hay stack trace đầy đủ. `instanceId` chỉ có ý nghĩa trong cùng phiên chạy.
 
-## Giới hạn và phạm vi của example
+## Giới hạn
 
 - Chỉ những subtree được đánh dấu mới chọn được; không có chế độ tự biến toàn bộ widget tree thành inspectable.
 - Không có reflection đọc mọi field của `State`, tự nhận biết các BLoC widget dùng, network recorder hoặc timeline giá trị đầy đủ. Cần khai báo scope/mixin và serializer.
-- Registry, history và annotations không tự persist ra disk hay gửi backend. Package không cung cấp bug-report form, dịch vụ upload hoặc tạo issue.
-- `BugReportPage`, `ScreenshotAnnotationPage` và `BugReportBundle` thuộc app example. ZIP/share dùng dependencies `archive`, `share_plus` của example, không được export bởi `flutter_qa_inspector`. Chỉ tham khảo/tích hợp phần này khi user cần flow gửi báo lỗi.
+- Registry, history và annotations không tự persist ra disk. Package có form và share sheet, nhưng không có dịch vụ upload hay tích hợp issue tracker; host nối qua `share:` hoặc flow riêng.
+- Form không có field tùy biến (severity, assignee, app version, device). Host cần thêm dữ liệu thì dùng `BugInspector` + form riêng, hoặc gắn qua `share:` khi upload.
+- `share_plus` là dependency plugin của package nên có native code trong cả bản production của host.
+- Trang vẽ (`ScreenshotAnnotationPage`) là private; dùng `BugScreenshotEditor` nếu host dựng editor riêng.
 - Runtime type names có thể bị rút gọn khi `--obfuscate`; dùng stable marker ID để truy nguồn.
 - `onWidgetSelected` nhận callback trả `FutureOr<void>`. Return/await future của report route để launcher ẩn cho tới khi report đóng; callback không return future thì launcher vẫn hiện.
-- Khi thiếu compile-time define, wrappers trả `child`, accessor/capture trả `null`, observer không ghi, editor hiện hộp rỗng. Vẫn có widget elements của wrappers; không mô tả là hoàn toàn không có overhead hoặc tự chứng nhận số đo binary của host app.
+- Khi thiếu compile-time define, wrappers trả `child`, accessor/capture trả `null`, observer không ghi, editor hiện hộp rỗng. `BugReportPage`/`BugReportBundle` được gọi trực tiếp vẫn hoạt động; gate lối mở riêng nếu chỉ dùng cho QA. Vẫn có widget elements của wrappers; không mô tả là hoàn toàn không có overhead hoặc dùng số đo trước `0.8.0` cho binary hiện tại.
 
 ## Nguồn chi tiết
 
@@ -56,3 +62,4 @@ Observer ghi `created`, `closed`, `error` cho BLoC/Cubit; `event`, `transition` 
 - [Recorder và observer](../../../flutter_qa_inspector/lib/src/bug_state_recorder.dart).
 - [Screenshot](../../../flutter_qa_inspector/lib/src/bug_screenshot.dart) và [editor/controller](../../../flutter_qa_inspector/lib/src/bug_screenshot_editor.dart).
 - [Status bar mô phỏng](../../../flutter_qa_inspector/lib/src/bug_status_bar.dart).
+- [Tích hợp nhanh](../../../flutter_qa_inspector/lib/src/flutter_qa_inspector_setup.dart), [form báo lỗi](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart), [ZIP](../../../flutter_qa_inspector/lib/src/report/bug_report_bundle.dart), [chuỗi](../../../flutter_qa_inspector/lib/src/report/bug_report_strings.dart), [page marker](../../../flutter_qa_inspector/lib/src/bug_inspectable_page.dart).
