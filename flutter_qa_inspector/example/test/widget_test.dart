@@ -111,8 +111,39 @@ void main() {
     expect(find.textContaining('"id": "catalog"'), findsOneWidget);
     expect(find.textContaining('"name": "/catalog"'), findsOneWidget);
     expect(find.textContaining('"id": "catalog_bloc"'), findsOneWidget);
-    // The search query lives in the State of the screen.
-    expect(find.textContaining('"type": "_CatalogViewState"'), findsOneWidget);
-    expect(find.textContaining('"query": "2"'), findsOneWidget);
+    // The page describes its child, CatalogPage, which has no parameters.
+    expect(find.textContaining('"widgetType": "CatalogPage"'), findsOneWidget);
+    expect(find.textContaining('"widgetState": {}'), findsOneWidget);
+  });
+
+  testWidgets('QA flow: select a catalog item', skip: _needsQaBuild,
+      (tester) async {
+    await tester.pumpWidget(
+      const ExampleApp(qaEnabled: true, captureScreenshots: false),
+    );
+    await tester.tap(find.text('Mở danh mục'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(
+        of: find.widgetWithText(ListTile, 'Sản phẩm 2'),
+        matching: find.byType(IconButton),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(BugInspector.launcherKey));
+    await _pumpModeChange(tester);
+    await tester.tapAt(tester.getCenter(find.text('Sản phẩm 2')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BugReportPage), findsOneWidget);
+    expect(find.textContaining('"id": "catalog.item"'), findsOneWidget);
+    // The type and the parameters of the child of the BugInspectable.
+    expect(
+      find.textContaining('"widgetType": "_CatalogItemTile"'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('"item": "Sản phẩm 2"'), findsOneWidget);
+    expect(find.textContaining('"favorite": true'), findsOneWidget);
   });
 }

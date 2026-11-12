@@ -12,6 +12,10 @@ part of '../flutter_qa_inspector.dart';
 /// Use a stable [id] such as `home.quick_add_water` and a [sourceFile]
 /// relative to the repository root.
 ///
+/// The selection describes [child]: [BugWidgetSelection.widgetType] is its
+/// runtime type and [BugWidgetSelection.widgetState] holds its parameters
+/// when its class uses [BugInspectableWidget].
+///
 /// For `Expanded`, `Flexible` and `Positioned`, put the [BugInspectable] inside
 /// their `child`. In a sliver list, put it inside `SliverToBoxAdapter` or the
 /// item builder.
@@ -55,7 +59,8 @@ class BugInspectable extends StatelessWidget implements _InspectableNodeWidget {
   @override
   final double? borderWidth;
 
-  /// The inspected widget.
+  /// The inspected widget. Its runtime type and, with
+  /// [BugInspectableWidget], its parameters describe the selection.
   @override
   final Widget child;
 
@@ -179,10 +184,13 @@ class _InspectableNode extends State<_InspectableNodeHost> {
   }) {
     final node = _node;
     final context = _markerContext;
+    final widgetState = _captureWidgetState(node.child);
     return BugWidgetSelection(
       kind: _kind,
       id: node.id,
       widgetType: node.child.runtimeType.toString(),
+      widgetState: widgetState.state,
+      widgetStateCaptureErrorType: widgetState.captureErrorType,
       label: node.label,
       sourceFile: node.sourceFile,
       sourceLine: node.sourceLine,
@@ -190,7 +198,6 @@ class _InspectableNode extends State<_InspectableNodeHost> {
       bounds: bounds,
       capturedAtUtc: capturedAtUtc,
       blocs: _captureBlocSnapshots(context, includeDescendants: _isPage),
-      widgetStates: _captureWidgetStates(context),
       stateHistory: stateHistory,
     );
   }

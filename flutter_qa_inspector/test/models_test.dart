@@ -16,7 +16,8 @@ void main() {
     test('matches the documented payload', () {
       final selection = BugWidgetSelection(
         id: 'counter.increment',
-        widgetType: 'FilledButton',
+        widgetType: 'CounterButton',
+        widgetState: const <String, Object?>{'step': 1, 'enabled': true},
         sourceFile: 'lib/main.dart',
         bounds: const Rect.fromLTWH(142, 388, 108, 48),
         capturedAtUtc: DateTime.utc(2026, 11, 11, 7, 40, 3, 123),
@@ -27,13 +28,6 @@ void main() {
             instanceId: '2a3b4c',
             stateType: 'int',
             state: <String, Object?>{'value': 2},
-          ),
-        ],
-        widgetStates: const <BugWidgetStateSnapshot>[
-          BugWidgetStateSnapshot(
-            type: '_CounterPageState',
-            widgetType: 'CounterPage',
-            state: <String, Object?>{'step': 1},
           ),
         ],
         stateHistory: <BugStateRecord>[
@@ -51,7 +45,8 @@ void main() {
       expect(selection.toJson(), <String, Object?>{
         'kind': 'widget',
         'id': 'counter.increment',
-        'widgetType': 'FilledButton',
+        'widgetType': 'CounterButton',
+        'widgetState': <String, Object?>{'step': 1, 'enabled': true},
         'source': <String, Object?>{'file': 'lib/main.dart'},
         'bounds': <String, Object?>{
           'left': 142.0,
@@ -68,13 +63,6 @@ void main() {
             'instanceId': '2a3b4c',
             'stateType': 'int',
             'state': <String, Object?>{'value': 2},
-          },
-        ],
-        'widgetStates': <Object?>[
-          <String, Object?>{
-            'type': '_CounterPageState',
-            'widgetType': 'CounterPage',
-            'state': <String, Object?>{'step': 1},
           },
         ],
         'stateHistory': <Object?>[
@@ -120,26 +108,24 @@ void main() {
       expect(bare.containsKey('source'), isFalse);
       expect(bare.containsKey('route'), isFalse);
       expect(bare.containsKey('label'), isFalse);
+      expect(bare['widgetState'], <String, Object?>{});
+      expect(bare.containsKey('widgetStateCaptureErrorType'), isFalse);
+      expect(bare.containsKey('widgetStates'), isFalse);
       expect(bare['blocs'], isEmpty);
-      expect(bare['widgetStates'], isEmpty);
       expect(bare['stateHistory'], isEmpty);
     });
   });
 
-  test('BugWidgetStateSnapshot.toJson adds the capture error', () {
-    const snapshot = BugWidgetStateSnapshot(
-      type: '_FormState',
-      widgetType: 'Form',
-      state: <String, Object?>{},
-      captureErrorType: 'StateError',
-    );
-    expect(snapshot.hasCaptureError, isTrue);
-    expect(snapshot.toJson(), <String, Object?>{
-      'type': '_FormState',
-      'widgetType': 'Form',
-      'state': <String, Object?>{},
-      'captureErrorType': 'StateError',
-    });
+  test('BugWidgetSelection.toJson adds the widget state capture error', () {
+    final json = BugWidgetSelection(
+      id: 'form',
+      widgetType: 'CheckoutForm',
+      widgetStateCaptureErrorType: 'StateError',
+      bounds: Rect.zero,
+      capturedAtUtc: DateTime.utc(2026),
+    ).toJson();
+    expect(json['widgetState'], <String, Object?>{});
+    expect(json['widgetStateCaptureErrorType'], 'StateError');
   });
 
   group('BugBlocScope.capture', () {

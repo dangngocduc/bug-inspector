@@ -1,3 +1,34 @@
+## 0.9.0
+
+- **Breaking:** a selection describes the `child` of its marker.
+  `BugWidgetSelection.widgetType` is still the runtime type of
+  `BugInspectable.child` or `BugInspectablePage.child`, and the new
+  `BugWidgetSelection.widgetState` holds the parameters of that same `child`.
+  - `BugInspectableWidget`, a mixin for the widget class of the `child`:
+    `bugSnapshot()` returns its parameters as a JSON object, for example
+    `{'productId': 'p1', 'inStock': true}`. It works on `StatelessWidget` and
+    `StatefulWidget`, in every build mode, and is only called when a tester
+    selects the marker. Only the direct `child` is read, not the widgets
+    inside it or above the marker.
+  - A `child` without the mixin, such as a `Text` or a `FilledButton`, gives
+    `widgetState: {}`. Diagnostics (`debugFillProperties`) are not used: they
+    are empty outside debug builds.
+  - When `bugSnapshot()` throws or returns a value that is not JSON
+    compatible, `widgetState` is `{}` and
+    `BugWidgetSelection.widgetStateCaptureErrorType` is the error type. The
+    other parts of the selection are captured as before.
+  - `inspector.json` has `widgetState` (always) and
+    `widgetStateCaptureErrorType` (on error) right after `widgetType`.
+- **Breaking:** removed `BugInspectableState`, `BugWidgetStateSnapshot` and
+  `BugWidgetSelection.widgetStates`, and the `widgetStates` list of the
+  payload. To migrate, move the values a bug report needs from the `State` to
+  the parameters of the widget under the marker and list them in
+  `bugSnapshot()` of `BugInspectableWidget`, or expose them through a
+  `BugBlocScope` when they live in a BLoC/Cubit.
+- Example: the catalog item is a `_CatalogItemTile` with
+  `BugInspectableWidget`, so its report has the item and whether it is a
+  favorite. The search query is no longer in the report.
+
 ## 0.8.0
 
 - The bug report flow moves from the example into the package, so an app

@@ -78,7 +78,7 @@ void main() => productionBuildOnly(() {
         expect(created.created, <Object>[lateCubit]);
         expect(recorder.records, isEmpty);
         expect(screen.lazyReads, 0);
-        expect(screen.stateReads, 0);
+        expect(screen.widgetStateReads, 0);
 
         final context = tester.element(find.text('Tap'));
         expect(BugInspector.maybeModeCubitOf(context), isNull);
@@ -92,7 +92,7 @@ void main() => productionBuildOnly(() {
         screen.expectUsed();
         expect(selections, 0);
         expect(screen.lazyReads, 0);
-        expect(screen.stateReads, 0);
+        expect(screen.widgetStateReads, 0);
         semanticsHandle.dispose();
       });
     });

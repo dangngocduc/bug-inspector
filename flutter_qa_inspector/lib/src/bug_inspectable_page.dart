@@ -11,7 +11,9 @@ part of '../flutter_qa_inspector.dart';
 /// such as a tab inside a shell, wins over its parent.
 ///
 /// The selection has [BugWidgetSelection.kind] set to
-/// [BugSelectionKind.page]. Its [BugWidgetSelection.blocs] include the
+/// [BugSelectionKind.page]. Its [BugWidgetSelection.widgetType] and
+/// [BugWidgetSelection.widgetState] describe [child], as for a
+/// [BugInspectable]. Its [BugWidgetSelection.blocs] include the
 /// [BugBlocScope]s inside the page as well as those above it.
 ///
 /// Wrap the content of each screen, for example in the page widget or in the
@@ -102,7 +104,8 @@ class BugInspectablePage extends StatelessWidget
   @override
   final double? borderWidth;
 
-  /// The page content.
+  /// The page content. Its runtime type and, with [BugInspectableWidget],
+  /// its parameters describe the selection.
   @override
   final Widget child;
 

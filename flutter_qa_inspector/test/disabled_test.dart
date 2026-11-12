@@ -43,7 +43,7 @@ void main() => qaBuildOnly(() {
           await screen.use(tester);
           screen.expectUsed();
           expect(screen.lazyReads, 0);
-          expect(screen.stateReads, 0);
+          expect(screen.widgetStateReads, 0);
           semanticsHandle.dispose();
         });
 

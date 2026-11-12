@@ -114,9 +114,8 @@ class _CatalogView extends StatefulWidget {
 }
 
 /// Keeps the search query, which only this screen needs, so it lives in the
-/// state instead of the bloc. BugInspectableState adds it to the bug report
-/// of the screen and of every widget this state builds.
-class _CatalogViewState extends State<_CatalogView> with BugInspectableState {
+/// state instead of the bloc.
+class _CatalogViewState extends State<_CatalogView> {
   final _query = TextEditingController();
 
   @override
@@ -124,10 +123,6 @@ class _CatalogViewState extends State<_CatalogView> with BugInspectableState {
     _query.dispose();
     super.dispose();
   }
-
-  // Only called when the tester selects a widget or the screen.
-  @override
-  Object? bugSnapshot() => {'query': _query.text};
 
   List<String> _matching(List<String> items) {
     final query = _query.text.trim().toLowerCase();
@@ -201,23 +196,19 @@ class _CatalogViewState extends State<_CatalogView> with BugInspectableState {
                   itemCount: items.length,
                   itemBuilder: (context, index) {
                     final item = items[index];
-                    final favorite = state.favorites.contains(item);
-                    // The id names the widget in code, the label tells which item.
+                    // The id names the widget in code, the label tells which
+                    // item. The selection describes the child: its type and
+                    // the parameters from its bugSnapshot.
                     return BugInspectable(
                       id: 'catalog.item',
                       label: item,
                       sourceFile: 'example/lib/catalog_page.dart',
-                      child: ListTile(
-                        title: Text(item),
-                        trailing: IconButton(
-                          tooltip: 'Yêu thích',
-                          icon: Icon(
-                            favorite ? Icons.favorite : Icons.favorite_border,
-                          ),
-                          onPressed: () => context
-                              .read<CatalogBloc>()
-                              .add(CatalogFavoriteToggled(item)),
-                        ),
+                      child: _CatalogItemTile(
+                        item: item,
+                        favorite: state.favorites.contains(item),
+                        onToggleFavorite: () => context
+                            .read<CatalogBloc>()
+                            .add(CatalogFavoriteToggled(item)),
                       ),
                     );
                   },
@@ -226,6 +217,36 @@ class _CatalogViewState extends State<_CatalogView> with BugInspectableState {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// One item of the list. BugInspectableWidget adds the parameters the list
+/// passes in to the bug report of the BugInspectable around it.
+class _CatalogItemTile extends StatelessWidget with BugInspectableWidget {
+  const _CatalogItemTile({
+    required this.item,
+    required this.favorite,
+    required this.onToggleFavorite,
+  });
+
+  final String item;
+  final bool favorite;
+  final VoidCallback onToggleFavorite;
+
+  // Only called when the tester selects the item.
+  @override
+  Map<String, Object?> bugSnapshot() => {'item': item, 'favorite': favorite};
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      title: Text(item),
+      trailing: IconButton(
+        tooltip: 'Yêu thích',
+        icon: Icon(favorite ? Icons.favorite : Icons.favorite_border),
+        onPressed: onToggleFavorite,
       ),
     );
   }

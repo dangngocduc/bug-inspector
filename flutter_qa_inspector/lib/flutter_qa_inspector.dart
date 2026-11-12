@@ -11,8 +11,9 @@
 /// For a custom flow, wrap the app content with [BugInspector] (usually in
 /// `MaterialApp.builder`),
 /// mark widgets with [BugInspectable], expose BLoC/Cubit state with
-/// [BugBlocScope], expose the fields of a [State] with [BugInspectableState],
-/// and record state history with [BugInspectorBlocObserver]. Testers can mark
+/// [BugBlocScope], expose the parameters of the marked widget with
+/// [BugInspectableWidget], and record state history with
+/// [BugInspectorBlocObserver]. Testers can mark
 /// parts of the [BugScreenshot] with rectangles in a [BugScreenshotEditor].
 ///
 /// The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`
@@ -47,7 +48,7 @@ export 'package:share_plus/share_plus.dart'
 part 'src/bug_bloc_scope.dart';
 part 'src/bug_inspectable.dart';
 part 'src/bug_inspectable_page.dart';
-part 'src/bug_inspectable_state.dart';
+part 'src/bug_inspectable_widget.dart';
 part 'src/bug_inspector.dart';
 part 'src/bug_screenshot.dart';
 part 'src/bug_screenshot_editor.dart';

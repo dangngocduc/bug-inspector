@@ -64,7 +64,7 @@ MaterialApp(
 );
 ```
 
-Sau đó đánh dấu widget bằng `BugInspectable` và gắn state bằng `BugBlocScope`/`BugInspectableState` như phần dưới.
+Sau đó đánh dấu widget bằng `BugInspectable`, gắn state bằng `BugBlocScope` và params của widget bằng `BugInspectableWidget` như phần dưới.
 
 - `FlutterQaInspector.install({stateRecorder})`: cài `MultiBlocObserver(Bloc.observer cũ + BugInspectorBlocObserver)` một lần; `FlutterQaInspector.recorder` là recorder đó. Thiếu define thì không làm gì.
 - `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)`: dựng `BugInspector` (recorder mặc định là `FlutterQaInspector.recorder`), mỗi lần chọn thì chụp màn hình rồi mở `BugReportPage` trên root navigator. Thiếu define thì trả nguyên `child`.
@@ -156,31 +156,43 @@ BugBlocScope<CartState>.lazy(
 )
 ```
 
-Lấy state của widget: Dart không tự đọc được field của `State`, nên `State` khai báo các field cần đưa vào bug report qua mixin `BugInspectableState`:
+Lấy params của widget được chọn: selection mô tả `child` của marker. `widgetType` là runtime type của `child`, `widgetState` là params của chính `child` đó. Dart không có reflection để tự đọc field, còn Diagnostics (`debugFillProperties`) chỉ có dữ liệu ở debug build, nên class widget của `child` khai báo params cần đưa vào bug report qua mixin `BugInspectableWidget`:
 
 ```dart
-class _CheckoutPageState extends State<CheckoutPage>
-    with BugInspectableState {
-  final _promoCode = TextEditingController();
-  var _step = 0;
-  var _acceptedTerms = false;
+class ProductCard extends StatelessWidget with BugInspectableWidget {
+  const ProductCard({
+    super.key,
+    required this.productId,
+    required this.inStock,
+    this.onAddToCart,
+  });
+
+  final String productId;
+  final bool inStock;
+  final VoidCallback? onAddToCart;
 
   // Chỉ chạy khi tester chọn widget hoặc màn hình.
   @override
-  Object? bugSnapshot() => {
-        'step': _step,
-        'acceptedTerms': _acceptedTerms,
-        'promoCode': _promoCode.text,
+  Map<String, Object?> bugSnapshot() => {
+        'productId': productId,
+        'inStock': inStock,
+        'canAddToCart': onAddToCart != null, // callback -> có hay không
       };
 
-  // initState, dispose, build như bình thường.
+  // build như bình thường.
 }
+
+BugInspectable(
+  id: 'catalog.product',
+  child: ProductCard(productId: product.id, inStock: product.inStock),
+)
+// selection.widgetType == 'ProductCard'
+// selection.widgetState == {'productId': 'p1', 'inStock': true, 'canAddToCart': false}
 ```
 
-Khi chọn một `BugInspectable` hoặc `BugInspectablePage`, `selection.widgetStates` chứa snapshot của mọi `State` có mixin này:
-
-- Bên trong widget/màn hình được chọn, theo thứ tự trong tree. Đây thường là state của chính widget đó, ví dụ `BugInspectable(child: QuantityStepper())` hoặc `BugInspectablePage(child: CheckoutPage())` với widget con là `StatefulWidget`.
-- Rồi các `State` phía trên, gần trước. Đây thường là `State` có `build` tạo ra widget được chọn, ví dụ một `BugInspectable` nằm trong `_CheckoutPageState.build`.
+- Chỉ đọc đúng `child` của `BugInspectable`/`BugInspectablePage`: đặt marker sát quanh widget có mixin. Widget có mixin nằm sâu hơn bên trong `child` (ví dụ `BugInspectable(child: Padding(child: ProductCard(...)))`) hoặc phía trên marker không được đọc; khi đó `widgetType` là `Padding` và `widgetState` là `{}`.
+- `child` không dùng mixin, kể cả widget của Flutter như `Text` hay `FilledButton`, cho `widgetState: {}`.
+- Mixin dùng được cho `StatelessWidget` và `StatefulWidget`, nhưng đọc params của widget (giá trị parent truyền vào), không đọc field của `State`. Giá trị là params tại lúc chọn, sau lần build gần nhất.
 
 Đánh dấu màn hình, trong page widget hoặc ngay trong route builder:
 
@@ -223,7 +235,7 @@ Define `FLUTTER_QA_INSPECTOR` là công tắc chính của package, đọc qua h
 | `BugInspector` | Chỉ trả về `child`, bất kể `enabled`. Không có nút nổi, không có lớp nào bọc app, không tạo `InspectModeCubit`. |
 | `BugInspectable`, `BugInspectablePage`, `BugInspectablePage.route` | Chỉ trả về `child`. Không đăng ký, không có render object hay `GlobalKey`. |
 | `BugBlocScope.lazy` | Chỉ trả về `child`, không bao giờ gọi `readBloc`. |
-| `BugInspectableState` | Mixin không override method nào của `State`, nên `State` chạy như khi không có mixin. `bugSnapshot` không bao giờ được gọi. |
+| `BugInspectableWidget` | Mixin không override method nào của widget, nên widget build như khi không có mixin. `bugSnapshot` không bao giờ được gọi. |
 | `BugInspectorBlocObserver` | Không ghi gì, kể cả khi app vẫn cài nó vào `Bloc.observer`. |
 | `maybeModeCubitOf`, `captureScreenshot` | Trả về `null`. |
 | `BugScreenshotEditor` | Dựng một hộp rỗng. |
@@ -262,10 +274,10 @@ Trên bản QA, `enabled: false` tắt inspector giống như khi không có def
 | `BugInspectable` | Đăng ký widget theo `id`, vẽ viền khi đang chọn. Có `label`, `sourceFile`, `sourceLine`, `borderColor`, `borderWidth`. Không có define hoặc ngoài host thì chỉ trả về `child`. |
 | `BugInspectablePage` | Đánh dấu cả màn hình. Cùng tham số như `BugInspectable`, viền riêng và được chọn bằng nút **Select screen**. `BugInspectablePage.route(settings:)` lấy `id`/`label` từ tên route. |
 | `BugBlocScope<S>`, `BugBlocScope<S>.lazy` | Gắn instance BLoC/Cubit và `snapshotBuilder` vào subtree. Bản `.lazy` chỉ đọc instance qua `readBloc` khi tester chọn widget. |
-| `BugInspectableState` | Mixin cho `State`. `bugSnapshot()` trả về các field của `State` dưới dạng JSON, chỉ được gọi khi tester chọn widget. |
+| `BugInspectableWidget` | Mixin cho class widget làm `child` của marker. `bugSnapshot()` trả về params của widget dưới dạng JSON object, lưu vào `selection.widgetState`, chỉ được gọi khi tester chọn widget. |
 | `BugStateRecorder` | Queue trong bộ nhớ, mặc định 300 bản ghi, bỏ bản ghi cũ nhất khi đầy. |
 | `BugInspectorBlocObserver` | Ghi `created`, `closed`, `error` (BLoC và Cubit), `event`, `transition` (BLoC), `change` (Cubit). Bỏ qua `InspectModeCubit`; có `filter` tùy chọn. Lỗi khi ghi (ví dụ `filter` ném lỗi) bị bỏ qua, không lan sang `emit`/`add` của app. |
-| `BugWidgetSelection`, `BugBlocSnapshot`, `BugWidgetStateSnapshot`, `BugStateRecord` | Dữ liệu trả về, có `toJson()`. `BugWidgetSelection.kind` là `widget` hoặc `page`. |
+| `BugWidgetSelection`, `BugBlocSnapshot`, `BugStateRecord` | Dữ liệu trả về, có `toJson()`. `BugWidgetSelection.kind` là `widget` hoặc `page`; `widgetType` và `widgetState` mô tả `child` của marker. |
 | `BugInspector.captureScreenshot` / `BugScreenshot` | Chụp PNG nội dung app (không gồm widget nổi và các lớp của inspector) và đổi bounds sang tọa độ ảnh. |
 | `BugScreenshotEditor` | Hiện ảnh chụp và cho tester vẽ, chọn, kéo, đổi kích thước và xóa các khung chữ nhật, và phóng to ảnh bằng hai ngón tay. `readOnly: true` chỉ hiện ảnh và các khung. |
 | `BugScreenshotAnnotationController`, `BugScreenshotAnnotation` | Giữ danh sách khung (tọa độ pixel của ảnh) và khung đang chọn. `toJson()` cho payload. |
@@ -328,7 +340,7 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
 - Màn hình hiện tại là `BugInspectablePage` đang được vẽ và nằm trên cùng: route mới push thắng route bên dưới (route offstage bị bỏ qua), tab ẩn của `IndexedStack` bị bỏ qua, màn hình lồng bên trong (tab trong shell) thắng màn hình chứa nó. Dialog hoặc bottom sheet không phải màn hình nên màn hình bên dưới vẫn là màn hình hiện tại.
 - Nút **Select screen** trên thanh công cụ hiện tên (`label`, hoặc `id`) của màn hình sẽ được chọn. Nút xuất hiện một frame sau khi viền đã vẽ, và ẩn khi không có màn hình nào.
 - `blocs` của màn hình gồm các `BugBlocScope` bên trong màn hình (theo thứ tự trong tree), rồi các scope phía trên (gần trước), loại trùng theo instance. Vì vậy có thể đặt `BugInspectablePage` ở route builder, bên ngoài các scope mà page widget tự tạo.
-- `bounds` là bounds của màn hình, `widgetType` là kiểu của `child` (ví dụ `CatalogPage`), `routeName` là `RouteSettings.name` của route nếu có.
+- `bounds` là bounds của màn hình, `widgetType` là kiểu của `child` (ví dụ `CatalogPage`), `widgetState` là params của `child` khi class đó dùng `BugInspectableWidget` (ví dụ `ProductPage(productId: ...)` ở route builder), `routeName` là `RouteSettings.name` của route nếu có.
 
 ## State và timeline
 
@@ -337,8 +349,8 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
 - Khi chọn, inspector đi ngược ancestor từ gần đến xa, loại trùng theo identity. Hai instance khác nhau của cùng class đều được giữ.
 - `snapshotBuilder` phải trả về giá trị JSON: chuỗi, số hữu hạn, bool, null, list, map có key là chuỗi (kiểm tra cả giá trị lồng nhau). Nếu builder ném lỗi hoặc trả giá trị không hợp lệ, snapshot đó có `state: {}` và `captureErrorType`; các scope khác vẫn được thu thập.
 - `blocs` chỉ phản ánh các scope khai báo phía trên widget. Đối chiếu thêm với `BlocBuilder`/`context.read<T>()` để biết widget thực sự dùng instance nào.
-- `widgetStates` gồm các `State` có `BugInspectableState` bên trong widget/màn hình được chọn (theo thứ tự trong tree), rồi các `State` phía trên (gần trước). `State` không có mixin, kể cả `State` nội bộ của `TextField` hay `Checkbox`, bị bỏ qua. Mỗi phần tử có `type` (kiểu của `State`, ví dụ `_CheckoutPageState`), `widgetType` (ví dụ `CheckoutPage`) và `state`.
-- `bugSnapshot` theo cùng quy tắc JSON như `snapshotBuilder`, được gọi đồng bộ lúc chọn và không được gọi `setState`. Nếu nó ném lỗi hoặc trả giá trị không hợp lệ, phần tử đó có `state: {}` và `captureErrorType`; các `State` khác vẫn được thu thập. Đừng đưa mật khẩu, token hay dữ liệu cá nhân vào snapshot. Khi nhiều instance của cùng một `State` có thể cùng xuất hiện (ví dụ item trong list), thêm một field để phân biệt, như id của item.
+- `widgetState` là params của `child` của marker, từ `BugInspectableWidget.bugSnapshot`; `{}` khi `child` không dùng mixin. Không có danh sách `State` của subtree hay ancestors (`widgetStates` đã bỏ từ `0.9.0`).
+- `bugSnapshot` theo cùng quy tắc JSON như `snapshotBuilder` (giá trị trong map), được gọi đồng bộ lúc chọn và không được thay đổi state. Nếu nó ném lỗi hoặc trả giá trị không hợp lệ, `widgetState` là `{}` và `widgetStateCaptureErrorType` là kiểu lỗi; `blocs` và `stateHistory` vẫn được thu thập. Đừng đưa mật khẩu, token hay dữ liệu cá nhân vào snapshot. Với item trong list, đưa id của item vào params để phân biệt.
 - Timeline chỉ lưu tên kiểu, không lưu giá trị state. Giá trị tại thời điểm chọn nằm trong `blocs[].state`. Dùng `instanceId` để đối chiếu snapshot với timeline trong cùng phiên chạy.
 - Snapshot và cutoff của timeline dùng chung một timestamp (`capturedAtUtc`).
 
@@ -348,7 +360,8 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
 {
   "kind": "widget",
   "id": "counter.increment",
-  "widgetType": "FilledButton",
+  "widgetType": "CounterButton",
+  "widgetState": { "step": 1, "enabled": true },
   "source": { "file": "lib/main.dart" },
   "bounds": {
     "left": 142.0, "top": 388.0, "width": 108.0, "height": 48.0,
@@ -361,12 +374,6 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
       "stateType": "int", "state": { "value": 2 }
     }
   ],
-  "widgetStates": [
-    {
-      "type": "_CounterPageState", "widgetType": "CounterPage",
-      "state": { "step": 1 }
-    }
-  ],
   "stateHistory": [
     {
       "timestampUtc": "2026-11-11T07:40:01.712Z", "kind": "change",
@@ -377,7 +384,7 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
 }
 ```
 
-`kind` là `page` khi chọn cả màn hình. `route.name` xuất hiện khi route có `RouteSettings.name` (route `home` là `/`). `label` và `source.line` chỉ xuất hiện khi được truyền. `blocs`, `widgetStates` và `stateHistory` có thể rỗng.
+`kind` là `page` khi chọn cả màn hình. `route.name` xuất hiện khi route có `RouteSettings.name` (route `home` là `/`). `label` và `source.line` chỉ xuất hiện khi được truyền. `widgetState` luôn có mặt và là `{}` khi `child` không dùng `BugInspectableWidget`; `widgetStateCaptureErrorType` chỉ xuất hiện khi `bugSnapshot` lỗi. `blocs` và `stateHistory` có thể rỗng.
 
 ## Ảnh chụp màn hình
 

@@ -18,7 +18,7 @@ Widget inspectCheckout(VoidCallback onCheckout) => BugInspectable(
     );
 ```
 
-ID ổn định giúp tìm lại vùng trong code; không dùng timestamp/random ID. Với list, ID có thể đặt theo điểm render chung rồi phân biệt item bằng `label`/snapshot, hoặc ghép domain ID ổn định phù hợp. Không phụ thuộc index khi list có thể đổi thứ tự. `label` hiển thị cho tester nên dùng localization hiện có trong app thật.
+ID ổn định giúp tìm lại vùng trong code; không dùng timestamp/random ID. Với list, ID có thể đặt theo điểm render chung rồi phân biệt item bằng `label`/`widgetState`, hoặc ghép domain ID ổn định phù hợp. Không phụ thuộc index khi list có thể đổi thứ tự. `label` hiển thị cho tester nên dùng localization hiện có trong app thật.
 
 Khi lồng nhiều marker, trong cùng mức ưu tiên hit test inspector chọn bounds nhỏ nhất, bằng nhau thì chọn node sâu hơn. Marker bị offstage/không paint bị loại, phần đã clip không nhận chọn; widget bị che chỉ là fallback khi không còn ứng viên chạm tới được. Không bọc nhiều lớp cùng một control nếu không có mục đích phân biệt vùng.
 
@@ -55,7 +55,7 @@ Widget inspectedCounterButton() => BlocBuilder<CounterCubit, int>(
 
 ## Cả page
 
-Bọc root page/Scaffold hoặc bọc page ở route builder; chọn một vị trí phù hợp với kiến trúc hiện có. Đặt ở route builder thường cho `widgetType` là class page thay vì chỉ `Scaffold`.
+Bọc root page/Scaffold hoặc bọc page ở route builder; chọn một vị trí phù hợp với kiến trúc hiện có. Đặt ở route builder thường cho `widgetType` là class page thay vì chỉ `Scaffold`, và `widgetState` là params của page khi class page dùng `BugInspectableWidget`.
 
 ```dart
 MaterialPageRoute<void> inspectedCatalogRoute(Widget page) =>
@@ -93,43 +93,54 @@ Page selection thu các `BugBlocScope` descendant theo tree rồi ancestors gầ
 
 Page/tab hiện tại là marker đang paint trên cùng; tab ẩn của `IndexedStack`/route offstage bị bỏ qua, page lồng bên trong shell thắng marker shell. Nút page xuất hiện sau frame paint marker. Nếu chỉ có marker shell, **Select screen** sẽ chọn shell, không tự suy ra page con.
 
-## Local State của StatefulWidget
+## Params của widget được chọn (`widgetState`)
 
-Mixin đặt trên `State` thật, không đặt trên class `StatefulWidget`. Giữ nguyên init/dispose/setState và state management hiện có; chỉ khai báo dữ liệu chẩn đoán.
+Selection mô tả `child` trực tiếp của `BugInspectable`/`BugInspectablePage`: `widgetType` là runtime type của `child`, `widgetState` là params của chính `child` đó. Dart không có reflection và Diagnostics (`debugFillProperties`) rỗng ngoài debug build, nên class widget làm `child` khai báo params bằng mixin `BugInspectableWidget`. Mixin đặt trên class widget (`StatelessWidget` hoặc `StatefulWidget`), không đặt trên `State`; giữ nguyên constructor, build và state management hiện có.
 
 ```dart
-class SearchPanel extends StatefulWidget {
-  const SearchPanel({super.key});
+class ProductCard extends StatelessWidget with BugInspectableWidget {
+  const ProductCard({
+    super.key,
+    required this.productId,
+    required this.inStock,
+    this.onAddToCart,
+  });
+
+  final String productId;
+  final bool inStock;
+  final VoidCallback? onAddToCart;
 
   @override
-  State<SearchPanel> createState() => _SearchPanelState();
-}
-
-class _SearchPanelState extends State<SearchPanel>
-    with BugInspectableState<SearchPanel> {
-  final _query = TextEditingController();
-
-  @override
-  Object? bugSnapshot() => {'queryLength': _query.text.length};
+  Map<String, Object?> bugSnapshot() => {
+        'productId': productId,
+        'inStock': inStock,
+        'canAddToCart': onAddToCart != null,
+      };
 
   @override
-  void dispose() {
-    _query.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => BugInspectable(
-        id: 'catalog.search',
-        sourceFile: 'lib/catalog/search_panel.dart',
-        child: TextField(controller: _query),
+  Widget build(BuildContext context) => ListTile(
+        title: Text(productId),
+        onTap: inStock ? onAddToCart : null,
       );
 }
+
+Widget inspectProduct(String id, bool inStock, VoidCallback onAdd) =>
+    BugInspectable(
+      id: 'catalog.product',
+      sourceFile: 'lib/catalog/product_card.dart',
+      child: ProductCard(productId: id, inStock: inStock, onAddToCart: onAdd),
+    );
 ```
 
-`widgetStates` gồm states có mixin trong subtree marker rồi ancestors. Mixin bắt được `_SearchPanelState` khi marker nằm trong `build` như trên, cũng bắt được khi một marker bên ngoài bọc `SearchPanel`. Nó không tự đọc state nội bộ của `TextField` hay state bất kỳ không có mixin. Khi nhiều instance local state cùng xuất hiện, thêm field phân biệt phù hợp.
+Kết quả: `widgetType: ProductCard`, `widgetState: {productId: ..., inStock: ..., canAddToCart: true}`.
 
-`bugSnapshot()` chạy đồng bộ lúc chọn: không gọi `setState`, `emit`, I/O hay trả `Future`. Không đưa password/token/dữ liệu cá nhân vào snapshot; query length trong ví dụ tránh thu nội dung nhập. JSON không hợp lệ hoặc exception cho snapshot `{}` kèm `captureErrorType`, không làm lỗi toàn selection.
+- Chỉ đọc `child` trực tiếp: đặt marker sát quanh widget có mixin. `BugInspectable(child: Padding(child: ProductCard(...)))` cho `widgetType: Padding`, `widgetState: {}`; widget có mixin sâu hơn trong `child` hoặc phía trên marker không được đọc. Với `Expanded`/`Flexible`, marker vẫn nằm trong `child` của chúng và bọc trực tiếp widget có mixin.
+- `child` không có mixin, kể cả widget Flutter (`Text`, `FilledButton`, `TextField`), cho `widgetState: {}`. Muốn có params thì tách phần UI thành widget riêng có mixin thay vì sửa widget framework.
+- Với `StatefulWidget`, `bugSnapshot()` chỉ thấy field của widget (giá trị parent truyền vào), không thấy field của `State`. Dữ liệu chỉ nằm trong `State` (ví dụ text của controller) không vào report; nếu cần, truyền nó xuống thành param của widget dưới marker hoặc đưa vào BLoC/Cubit có `BugBlocScope`. Không tạo state/controller mới chỉ để inspect.
+- Page: `BugInspectablePage(child: ProductPage(productId: ...))` hoặc `BugInspectablePage.route(child: pageFor(settings))` cho params của page widget khi class page dùng mixin; page `const CatalogPage()` không có params thì `{}`.
+- Callback: báo có hay không (`onAddToCart != null`), không trả function. List item: đưa domain id vào params để phân biệt instance.
+
+`bugSnapshot()` chạy đồng bộ lúc chọn: không gọi `setState`, `emit`, I/O hay trả `Future`. Giá trị trong map theo quy tắc JSON như `snapshotBuilder` (enum `.name`, DateTime ISO, Set thành list). Không đưa password/token/dữ liệu cá nhân vào params. Exception hoặc JSON không hợp lệ cho `widgetState: {}` kèm `widgetStateCaptureErrorType`, không làm lỗi toàn selection.
 
 ## Giữ layout và kiểm tra kết quả
 
@@ -146,4 +157,4 @@ Widget expandedInspection(Widget content) => Expanded(
 
 Dùng pattern này trong `Row`/`Column` phù hợp. Không bọc sliver trực tiếp bằng marker box; bọc widget trong item builder hoặc bên trong `SliverToBoxAdapter`.
 
-Kiểm tra sau khi chọn: `kind`, `id`, `widgetType`, source/route nếu đã khai báo; snapshot đúng instance/field và không có `captureErrorType`. Nếu `blocs` rỗng, xem lại vị trí scope; nếu `unknown`, xem provider và context; nếu `widgetStates` rỗng, xem mixin trên state thật. `stateHistory` rỗng cần kiểm tra recorder/observer/cửa sổ thời gian, không giải quyết bằng tạo thêm Cubit.
+Kiểm tra sau khi chọn: `kind`, `id`, `widgetType`, `widgetState`, source/route nếu đã khai báo; snapshot đúng instance/field và không có `captureErrorType`/`widgetStateCaptureErrorType`. Nếu `blocs` rỗng, xem lại vị trí scope; nếu `unknown`, xem provider và context; nếu `widgetState` rỗng, xem `widgetType` có đúng class có mixin không (marker phải bọc trực tiếp widget đó). `stateHistory` rỗng cần kiểm tra recorder/observer/cửa sổ thời gian, không giải quyết bằng tạo thêm Cubit.

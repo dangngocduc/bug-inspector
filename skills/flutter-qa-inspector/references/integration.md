@@ -11,7 +11,7 @@ dependencies:
     # hoặc git: { url: <repo>, path: flutter_qa_inspector, ref: <tag/sha> }
 ```
 
-Contract `0.8.0`: Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên; không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ.
+Contract `0.9.0` (dependencies không đổi từ `0.8.0`): Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên; không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ.
 
 `share_plus` là plugin: native code của nó có trong mọi build của host, kể cả production. Khi host chỉ mở form qua facade, nhánh inspector/form không được gọi khi thiếu define. Báo rõ điểm này nếu host nhạy cảm với kích thước binary hoặc danh sách plugin.
 
@@ -121,7 +121,7 @@ void main() {
 
 `MaterialApp.router` cũng đặt host trong `builder` và giữ nguyên `routerConfig` đang có. Nếu builder cũ đã bọc child, ghép inspector quanh nội dung đó, giữ các ancestor/context mà app cần. Không thay `child` bằng page cố định; không tạo host riêng cho mỗi marker.
 
-Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHistory` rỗng nhưng `BugBlocScope` và `BugInspectableState` vẫn capture lúc chọn. Khi cần history, dùng cùng instance recorder ở host và observer; không tạo recorder trong `build`.
+Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHistory` rỗng nhưng `BugBlocScope` và `BugInspectableWidget` vẫn capture lúc chọn. Khi cần history, dùng cùng instance recorder ở host và observer; không tạo recorder trong `build`.
 
 ## Menu QA, ownership và options
 

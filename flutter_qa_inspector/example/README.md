@@ -6,7 +6,7 @@ Ví dụ tích hợp `flutter_qa_inspector`:
 - `lib/app.dart`: gọi `FlutterQaInspector.wrap` trong `MaterialApp.builder`, giữ child chứa Navigator. Package tự chụp ảnh và mở form báo lỗi; launcher ẩn trong lúc form mở. Không cần file setup hoặc report riêng; app không cần option thì dùng thẳng `FlutterQaInspector.builder`.
 - `lib/counter_page.dart`, `lib/catalog_page.dart`: dùng `BugBlocScope.lazy`, nên Cubit/Bloc chỉ được đọc khi tester chọn widget.
 - `lib/counter_page.dart`: Cubit đếm số lần nhấn, như ví dụ trong tài liệu.
-- `lib/catalog_page.dart`: Bloc có event, `ListView` và bộ lọc. Ô tìm kiếm giữ query trong `State` của màn hình; `BugInspectableState` đưa query đó vào `widgetStates`.
+- `lib/catalog_page.dart`: Bloc có event, `ListView` và bộ lọc. Mỗi item là `_CatalogItemTile` dùng `BugInspectableWidget`, nên report của item có `widgetType: _CatalogItemTile` và `widgetState` với `item`, `favorite` (params mà list truyền vào). Query của ô tìm kiếm nằm trong `State` của màn hình nên không có trong report.
 - Form, trang vẽ và ZIP nằm trong [package](../lib/src/report/), được dùng qua `package:flutter_qa_inspector/flutter_qa_inspector.dart`. Example không giữ bản copy hoặc khai báo riêng `archive`/`share_plus`.
 - `BugReportPage`: form Cupertino full-screen trên root navigator (`/qa-bug-report`), với theme và Navigator riêng. Back đóng editor trước rồi mới tới form; form có mô tả hoặc khung hỏi trước khi bỏ.
 - `BugReportStrings`: có sẵn `en`/`vi`, chọn theo locale của app. Example hiện dùng locale mặc định tiếng Anh cho report (**Bug report**, **Cancel**, **Send**, **Done**); có thể truyền `strings: (_) => BugReportStrings.vi` cho `wrap` để dùng tiếng Việt.
@@ -19,7 +19,7 @@ flutter run --release                                   # như production: khôn
 
 Nhấn **Tăng** hai lần, nhấn nút bug nổi ở cạnh phải, rồi chạm vào nút **Tăng** đang có viền. Form hiển thị `id: counter.increment` và snapshot `value: 2`; giá trị đếm giữ nguyên.
 
-Mở **Danh mục**, gõ `2` vào ô tìm kiếm, bật inspector rồi chọn ô tìm kiếm hoặc bấm **Select screen**. Payload có `widgetStates` với `_CatalogViewState` và `query: 2`.
+Mở **Danh mục**, bấm tim của **Sản phẩm 2**, bật inspector rồi chọn **Sản phẩm 2**. Payload có `widgetType: _CatalogItemTile` và `widgetState: {item: Sản phẩm 2, favorite: true}`. Bấm **Select screen** thì `widgetType` là `CatalogPage` và `widgetState` là `{}` vì `CatalogPage` không dùng mixin.
 
 Sau khi chọn widget, trang **Bug report** mở toàn màn hình. Chạm vào ảnh trong form để mở trang **Mark up screenshot**. Kéo trên ảnh để vẽ khung, chạm vào khung để chọn, kéo để di chuyển, kéo các góc để đổi kích thước, bấm ✕ để xóa, dùng hai ngón tay để phóng to và di chuyển ảnh, rồi bấm **Done** (hoặc back) để quay lại form. **Clear all** hỏi trước khi xóa mọi khung. Dòng dưới ảnh hiện số vùng đã đánh dấu, và JSON sao chép bằng **Copy JSON** ở nhóm Payload có `screenshot.annotations`.
 

@@ -45,6 +45,15 @@ def read_entries(archive):
         return contents, [name for name in names if name not in KNOWN_ENTRIES]
 
 
+def warn_capture_errors(field, values, warnings):
+    for index, value in enumerate(values):
+        if isinstance(value, dict) and value.get("captureErrorType") is not None:
+            warnings.append(
+                f"inspector.{field}[{index}] has captureErrorType: "
+                f"{value['captureErrorType']}"
+            )
+
+
 def read_report(archive, output_dir=None):
     archive = Path(archive).expanduser().resolve(strict=True)
     contents, ignored = read_entries(archive)
@@ -66,18 +75,37 @@ def read_report(archive, output_dir=None):
         warnings.append("inspector.kind is not widget/page; inspect the raw payload")
 
     snapshot_counts = {}
-    for field in ("blocs", "widgetStates", "stateHistory"):
+    for field in ("blocs", "stateHistory"):
         values = inspector.get(field)
         snapshot_counts[field] = len(values) if isinstance(values, list) else None
         if not isinstance(values, list):
             warnings.append(f"inspector.{field} is missing or not a list")
-        elif field != "stateHistory":
-            for index, value in enumerate(values):
-                if isinstance(value, dict) and value.get("captureErrorType") is not None:
-                    warnings.append(
-                        f"inspector.{field}[{index}] has captureErrorType: "
-                        f"{value['captureErrorType']}"
-                    )
+        elif field == "blocs":
+            warn_capture_errors(field, values, warnings)
+
+    # Since 0.9.0: the parameters of the child of the marker, as an object.
+    widget_state = inspector.get("widgetState")
+    legacy_states = inspector.get("widgetStates")
+    if isinstance(widget_state, dict):
+        snapshot_counts["widgetState"] = len(widget_state)
+    elif "widgetState" in inspector:
+        snapshot_counts["widgetState"] = None
+        warnings.append("inspector.widgetState is not an object")
+    elif isinstance(legacy_states, list):
+        snapshot_counts["widgetStates"] = len(legacy_states)
+        warnings.append(
+            "inspector.widgetStates is the format before 0.9.0: State snapshots "
+            "of the subtree and ancestors, not the parameters of the selected child"
+        )
+        warn_capture_errors("widgetStates", legacy_states, warnings)
+    else:
+        snapshot_counts["widgetState"] = None
+        warnings.append("inspector.widgetState is missing")
+    widget_state_error = inspector.get("widgetStateCaptureErrorType")
+    if widget_state_error is not None:
+        warnings.append(
+            f"inspector.widgetStateCaptureErrorType: {widget_state_error}"
+        )
 
     image = contents.get("screenshot.png")
     image_size = None

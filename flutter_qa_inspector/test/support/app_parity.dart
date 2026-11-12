@@ -43,8 +43,8 @@ class ParityScreen {
   /// How many times the lazy scope read its bloc.
   int lazyReads = 0;
 
-  /// How many times the state of the text field was captured.
-  int stateReads = 0;
+  /// How many times the parameters of the text field were captured.
+  int widgetStateReads = 0;
 
   Widget build({required bool withPackage}) {
     Widget mark(String id, Widget child) =>
@@ -56,7 +56,12 @@ class ParityScreen {
           'button',
           TextButton(onPressed: () => taps++, child: const Text('Tap')),
         ),
-        mark('field', withPackage ? _InspectedDraft(this) : const _Draft()),
+        mark(
+          'field',
+          withPackage
+              ? _InspectedDraft(this, maxLines: 1)
+              : const _Draft(maxLines: 1),
+        ),
         Expanded(
           child: ListView(
             children: <Widget>[
@@ -112,7 +117,9 @@ class ParityScreen {
 
 /// A text field whose text is kept in a [State].
 class _Draft extends StatefulWidget {
-  const _Draft();
+  const _Draft({required this.maxLines});
+
+  final int maxLines;
 
   @override
   State<_Draft> createState() => _DraftState();
@@ -128,24 +135,21 @@ class _DraftState extends State<_Draft> {
   }
 
   @override
-  Widget build(BuildContext context) => TextField(controller: text);
+  Widget build(BuildContext context) =>
+      TextField(controller: text, maxLines: widget.maxLines);
 }
 
-/// The same text field, with its state exposed through [BugInspectableState].
-class _InspectedDraft extends _Draft {
-  const _InspectedDraft(this.screen);
+/// The same text field, with its parameters exposed through
+/// [BugInspectableWidget].
+class _InspectedDraft extends _Draft with BugInspectableWidget {
+  const _InspectedDraft(this.screen, {required super.maxLines});
 
   final ParityScreen screen;
 
   @override
-  State<_Draft> createState() => _InspectedDraftState();
-}
-
-class _InspectedDraftState extends _DraftState with BugInspectableState {
-  @override
-  Object? bugSnapshot() {
-    (widget as _InspectedDraft).screen.stateReads++;
-    return <String, Object?>{'text': text.text};
+  Map<String, Object?> bugSnapshot() {
+    screen.widgetStateReads++;
+    return <String, Object?>{'maxLines': maxLines};
   }
 }
 

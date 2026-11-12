@@ -22,6 +22,7 @@ Ví dụ cấu trúc `inspector.json` rút gọn nhưng hợp lệ; arrays thự
     "kind": "widget",
     "id": "counter.increment",
     "widgetType": "FilledButton",
+    "widgetState": {},
     "source": {"file": "lib/counter/counter_page.dart", "line": 34},
     "route": {"name": "/"},
     "bounds": {
@@ -30,7 +31,6 @@ Ví dụ cấu trúc `inspector.json` rút gọn nhưng hợp lệ; arrays thự
     },
     "capturedAtUtc": "2026-11-12T09:30:05.000Z",
     "blocs": [],
-    "widgetStates": [],
     "stateHistory": []
   },
   "screenshot": {
@@ -44,6 +44,8 @@ Ví dụ cấu trúc `inspector.json` rút gọn nhưng hợp lệ; arrays thự
   }
 }
 ```
+
+Từ `0.9.0`, `inspector.widgetState` là JSON object params của `child` trực tiếp của marker (cùng widget với `widgetType`), từ `BugInspectableWidget.bugSnapshot()`; `widgetStateCaptureErrorType` chỉ có khi capture lỗi. Report trước `0.9.0` không có `widgetState` mà có `widgetStates` (list snapshot `State` có mixin trong subtree rồi ancestors, mỗi phần tử `type`/`widgetType`/`state`/`captureErrorType`); hai field có ý nghĩa khác nhau, đọc đúng theo field đang có và không đổi cái này thành cái kia.
 
 Mô tả chính ở `description.txt`, không phải một trường bắt buộc trong `inspector.json`. JSON copy từ form có thể có thêm top-level `description`, nhưng không phải cấu trúc mà ZIP exporter hiện tại ghi. `screenshot` không chứa PNG bytes.
 
@@ -66,9 +68,9 @@ Helper báo lỗi với ZIP hỏng, thiếu entry bắt buộc, JSON không có 
 ## Đối chiếu bug với vùng UI và state
 
 1. **Triệu chứng:** giữ nghĩa của mô tả tester; đối chiếu chữ, giá trị, layout và trạng thái UI nhìn thấy trong ảnh. Chỉ suy ra expected behavior khi mô tả hoặc tài liệu/source xác nhận; nếu chưa có thì ghi chưa rõ. Không biến tên marker thành mô tả bug.
-2. **Vị trí:** đọc `kind`, `id`, `label`, `widgetType`, `source.file`/`source.line`, `route.name`. Marker là vùng tester chọn để báo lỗi, không tự chứng minh file đó là nguyên nhân. `source`/`route` có thể thiếu; line number và file path có thể lệch checkout hiện tại.
+2. **Vị trí:** đọc `kind`, `id`, `label`, `widgetType`, `source.file`/`source.line`, `route.name`. `widgetType` là type của `child` trực tiếp của marker, có thể là wrapper như `Padding` thay vì widget nghiệp vụ bên trong. Marker là vùng tester chọn để báo lỗi, không tự chứng minh file đó là nguyên nhân. `source`/`route` có thể thiếu; line number và file path có thể lệch checkout hiện tại.
 3. **Ảnh và rectangles:** highlight widget là `inspector.bounds` trong global logical pixels; annotations do tester thêm là `screenshot.annotations` trong image pixels, có thể chỉ sang vùng khác marker. Đối chiếu đúng hệ tọa độ trước khi gắn một rectangle với control. Nếu có `screenshot.statusBar`, không dùng pin/sóng/Wi-Fi luôn đầy hoặc style Pixel 8/Dynamic Island để kết luận mạng, pin hay model máy thật: chúng là đồ họa mô phỏng.
-4. **State tại lúc chọn:** đọc `blocs[].id/type/instanceId/stateType/state` và `widgetStates[].type/widgetType/state`. Trích các field liên quan triệu chứng và giữ nguyên giá trị; không dump toàn payload khi không cần. `captureErrorType` nghĩa là capture lỗi, không phải state thực sự `{}` hay nguyên nhân lỗi app.
+4. **State tại lúc chọn:** đọc `widgetState` (params của widget `widgetType` tại lúc chọn) và `blocs[].id/type/instanceId/stateType/state`; report cũ có `widgetStates[].type/widgetType/state` thay cho `widgetState`. Trích các field liên quan triệu chứng và giữ nguyên giá trị; không dump toàn payload khi không cần. `widgetState: {}` thường nghĩa là class `child` không dùng `BugInspectableWidget`, không chứng minh widget không có params; local state trong `State` (text controller, flag nội bộ) không có trong report. `captureErrorType`/`widgetStateCaptureErrorType` nghĩa là capture lỗi, không phải state thực sự `{}` hay nguyên nhân lỗi app.
 5. **Timeline:** đối chiếu `stateHistory[].instanceId` với `blocs[].instanceId`, đọc thứ tự timestamp và `kind`. Records không được lọc riêng theo widget; có thể có BLoC khác trong app. `errorType` chỉ là kiểu lỗi, không có error message/stack. Không tự suy ra event payload hay state values từ tên type.
 6. **Thời điểm:** `inspector.capturedAtUtc` là lúc chọn; `screenshot.capturedAtUtc` có thể muộn hơn. Timeline mặc định 30 giây, queue giới hạn mặc định 300, có thể bị filter/ghi thiếu do cài observer muộn. Không coi report là video, toàn bộ session log hoặc bằng chứng đã tái hiện được các bước.
 
