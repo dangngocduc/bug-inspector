@@ -32,6 +32,7 @@ part 'src/bug_inspector.dart';
 part 'src/bug_screenshot.dart';
 part 'src/bug_screenshot_editor.dart';
 part 'src/bug_state_recorder.dart';
+part 'src/bug_status_bar.dart';
 part 'src/inspect_mode_cubit.dart';
 part 'src/models.dart';
 part 'src/selection_resolver.dart';

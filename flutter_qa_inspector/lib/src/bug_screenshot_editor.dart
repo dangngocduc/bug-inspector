@@ -131,6 +131,14 @@ class BugScreenshotAnnotationController extends ChangeNotifier {
 /// * Tap a rectangle to select it, drag it to move it, and drag one of its
 ///   corner handles to resize it. Tap outside the rectangles to unselect.
 /// * The round button next to the selected rectangle deletes it.
+/// * Pinch with two fingers to zoom in, up to [maxZoom], and move them to pan
+///   the zoomed image. A second finger undoes what the first one was drawing,
+///   moving or resizing, and the fingers zoom until they are all lifted. While
+///   zoomed in, the button in the bottom right corner shows the zoom and
+///   resets it.
+///
+/// The [BugScreenshot.statusBar], if any, is drawn over the top of the
+/// image, like in [BugScreenshot.toAnnotatedPng].
 ///
 /// Rectangles stay inside the image. The editor keeps the aspect ratio of the
 /// image and takes the largest size its constraints allow, so give it a
@@ -154,7 +162,9 @@ class BugScreenshotEditor extends StatefulWidget {
     this.highlightColor = BugInspector.defaultBorderColor,
     this.semanticLabel = defaultSemanticLabel,
     this.deleteButtonLabel = defaultDeleteButtonLabel,
-  });
+    this.resetZoomButtonLabel = defaultResetZoomButtonLabel,
+    this.maxZoom = defaultMaxZoom,
+  }) : assert(maxZoom >= 1, 'maxZoom must be at least 1');
 
   /// The default color of the rectangles.
   static const Color defaultColor = Color(0xFFFF6D00);
@@ -168,10 +178,21 @@ class BugScreenshotEditor extends StatefulWidget {
   /// The default [deleteButtonLabel].
   static const String defaultDeleteButtonLabel = 'Delete rectangle';
 
+  /// The default [resetZoomButtonLabel].
+  static const String defaultResetZoomButtonLabel = 'Reset zoom';
+
+  /// The default [maxZoom].
+  static const double defaultMaxZoom = 5;
+
   /// The key of the button that deletes the selected rectangle, for widget
   /// tests and integration tests.
   static const Key deleteButtonKey =
       ValueKey<String>('bug_screenshot_editor.delete');
+
+  /// The key of the button that resets the zoom, shown while zoomed in, for
+  /// widget tests and integration tests.
+  static const Key resetZoomButtonKey =
+      ValueKey<String>('bug_screenshot_editor.reset_zoom');
 
   /// The smallest width and height of a rectangle drawn or resized by the
   /// tester, in logical pixels on screen.
@@ -194,7 +215,8 @@ class BugScreenshotEditor extends StatefulWidget {
   /// The color of the rectangles.
   final Color color;
 
-  /// The stroke width of the rectangles, in logical pixels on screen.
+  /// The stroke width of the rectangles, in logical pixels on screen, at any
+  /// zoom.
   ///
   /// Pass the same value to [BugScreenshot.toAnnotatedPng] to get the same
   /// look in the exported image.
@@ -208,6 +230,14 @@ class BugScreenshotEditor extends StatefulWidget {
 
   /// What a screen reader says for the delete button.
   final String deleteButtonLabel;
+
+  /// What a screen reader says for the button that resets the zoom.
+  final String resetZoomButtonLabel;
+
+  /// How far two fingers can zoom in: 2 shows the image twice as large as
+  /// it fits in the editor. 1 turns zooming off, and a second finger is then
+  /// ignored.
+  final double maxZoom;
 
   @override
   State<BugScreenshotEditor> createState() => _BugScreenshotEditorState();
@@ -229,8 +259,24 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
   static const double _deleteButtonSize = 32;
   static const double _deleteButtonGap = 8;
 
-  /// The size the image is shown at, in logical pixels.
+  /// A pinch that ends closer to the fit than this goes back to it.
+  static const double _zoomSnap = 1.05;
+
+  /// The size of the editor, in logical pixels: where the image is shown,
+  /// whole when not zoomed in.
   Size _displaySize = Size.zero;
+
+  /// How many times larger than its fit the image is shown, from 1 to
+  /// [BugScreenshotEditor.maxZoom].
+  double _zoom = 1;
+
+  /// The image pixel at the top left corner of the editor.
+  Offset _viewOrigin = Offset.zero;
+
+  /// The image pixel under the fingers when the pinch started, which stays
+  /// under them.
+  Offset _pinchAnchor = Offset.zero;
+  double _pinchStartZoom = 1;
 
   _EditorDragMode? _mode;
   Offset _dragStart = Offset.zero;
@@ -255,9 +301,14 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
   Size get _imageSize =>
       Size(_screenshot.width.toDouble(), _screenshot.height.toDouble());
 
-  /// Logical pixels on screen per image pixel.
-  double get _scale =>
+  /// Logical pixels on screen per image pixel when the whole image fits.
+  double get _fitScale =>
       _screenshot.width == 0 ? 1 : _displaySize.width / _screenshot.width;
+
+  /// Logical pixels on screen per image pixel at the current zoom.
+  double get _scale => _fitScale * _zoom;
+
+  double get _maxZoom => widget.readOnly ? 1 : widget.maxZoom;
 
   @override
   void didUpdateWidget(BugScreenshotEditor oldWidget) {
@@ -267,21 +318,72 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
         oldWidget.screenshot != widget.screenshot) {
       _resetDrag();
     }
+    if (oldWidget.screenshot != widget.screenshot) {
+      _zoom = 1;
+      _viewOrigin = Offset.zero;
+    } else if (_zoom > _maxZoom) {
+      _zoom = _maxZoom;
+      _viewOrigin = _clampOrigin(_viewOrigin, _zoom);
+    }
   }
 
   Rect _toDisplay(Rect imageRect) {
     final scale = _scale;
+    final origin = _viewOrigin;
     return Rect.fromLTRB(
-      imageRect.left * scale,
-      imageRect.top * scale,
-      imageRect.right * scale,
-      imageRect.bottom * scale,
+      (imageRect.left - origin.dx) * scale,
+      (imageRect.top - origin.dy) * scale,
+      (imageRect.right - origin.dx) * scale,
+      (imageRect.bottom - origin.dy) * scale,
     );
   }
 
   Offset _toImage(Offset displayPoint) {
     final scale = _scale;
-    return Offset(displayPoint.dx / scale, displayPoint.dy / scale);
+    return Offset(displayPoint.dx / scale, displayPoint.dy / scale) +
+        _viewOrigin;
+  }
+
+  /// [origin] moved so that the editor, at [zoom], shows only the image.
+  Offset _clampOrigin(Offset origin, double zoom) {
+    final size = _imageSize;
+    return Offset(
+      _clamp(origin.dx, 0, size.width - size.width / zoom),
+      _clamp(origin.dy, 0, size.height - size.height / zoom),
+    );
+  }
+
+  void _onPinchStart(Offset focal) {
+    if (_displaySize.isEmpty) return;
+    _pinchAnchor = _toImage(focal);
+    _pinchStartZoom = _zoom;
+  }
+
+  void _onPinchUpdate(Offset focal, double scale) {
+    if (_displaySize.isEmpty) return;
+    final zoom = _clamp(_pinchStartZoom * scale, 1, _maxZoom);
+    final zoomScale = _fitScale * zoom;
+    final origin = _clampOrigin(
+      _pinchAnchor - Offset(focal.dx / zoomScale, focal.dy / zoomScale),
+      zoom,
+    );
+    if (zoom == _zoom && origin == _viewOrigin) return;
+    setState(() {
+      _zoom = zoom;
+      _viewOrigin = origin;
+    });
+  }
+
+  void _onPinchEnd() {
+    if (_zoom < _zoomSnap) _resetZoom();
+  }
+
+  void _resetZoom() {
+    if (_zoom == 1 && _viewOrigin == Offset.zero) return;
+    setState(() {
+      _zoom = 1;
+      _viewOrigin = Offset.zero;
+    });
   }
 
   /// The handle of the selected rectangle at [point], as the index of the
@@ -501,12 +603,23 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
   Widget build(BuildContext context) {
     if (!BugInspector.enabledFromEnvironment) return const SizedBox.shrink();
     final screenshot = widget.screenshot;
-    final image = Image.memory(
+    Widget image = Image.memory(
       screenshot.pngBytes,
       fit: BoxFit.fill,
       gaplessPlayback: true,
       excludeFromSemantics: true,
     );
+    final statusBar = screenshot.statusBar;
+    if (statusBar != null && screenshot.pixelRatio > 0) {
+      // Part of the image: it zooms with it, under the rectangles.
+      image = CustomPaint(
+        foregroundPainter: _StatusBarPainter(
+          statusBar,
+          contentWidth: screenshot.width / screenshot.pixelRatio,
+        ),
+        child: image,
+      );
+    }
     final highlight = widget.highlight;
     final imageHighlight =
         highlight == null ? null : screenshot.toImageRect(highlight);
@@ -527,33 +640,51 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
               builder: (context, image) {
                 final controller = widget.controller;
                 final selected = widget.readOnly ? null : controller.selected;
+                final selectedRect =
+                    selected == null ? null : _toDisplay(selected.rect);
+                final scale = _scale;
                 Widget canvas = CustomPaint(
                   foregroundPainter: _AnnotationPainter(
                     annotations: controller.annotations,
                     selectedIndex:
                         widget.readOnly ? null : controller.selectedIndex,
-                    scale: _scale,
+                    scale: scale,
+                    origin: _viewOrigin,
                     color: widget.color,
                     strokeWidth: widget.strokeWidth,
                     highlight: imageHighlight,
                     highlightColor: widget.highlightColor,
                   ),
-                  child: image,
+                  child: ClipRect(
+                    child: Transform(
+                      transform: Matrix4.diagonal3Values(_zoom, _zoom, 1)
+                        ..setTranslationRaw(
+                          -_viewOrigin.dx * scale,
+                          -_viewOrigin.dy * scale,
+                          0,
+                        ),
+                      child: image,
+                    ),
+                  ),
                 );
                 if (!widget.readOnly) {
                   canvas = RawGestureDetector(
                     behavior: HitTestBehavior.opaque,
                     excludeFromSemantics: true,
                     gestures: <Type, GestureRecognizerFactory>{
-                      _AnnotationDragRecognizer:
+                      _EditorGestureRecognizer:
                           GestureRecognizerFactoryWithHandlers<
-                              _AnnotationDragRecognizer>(
-                        () => _AnnotationDragRecognizer(debugOwner: this),
+                              _EditorGestureRecognizer>(
+                        () => _EditorGestureRecognizer(debugOwner: this),
                         (recognizer) => recognizer
-                          ..onStart = _onDragStart
-                          ..onUpdate = _onDragUpdate
-                          ..onEnd = _onDragEnd
-                          ..onCancel = _onDragCancel,
+                          ..pinchEnabled = _maxZoom > 1
+                          ..onDragStart = _onDragStart
+                          ..onDragUpdate = _onDragUpdate
+                          ..onDragEnd = _onDragEnd
+                          ..onDragCancel = _onDragCancel
+                          ..onPinchStart = _onPinchStart
+                          ..onPinchUpdate = _onPinchUpdate
+                          ..onPinchEnd = _onPinchEnd,
                       ),
                     },
                     child: canvas,
@@ -563,8 +694,11 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
                   fit: StackFit.expand,
                   children: <Widget>[
                     canvas,
-                    if (selected != null)
-                      _deleteButton(_toDisplay(selected.rect)),
+                    // Not for a rectangle zoomed out of view.
+                    if (selectedRect != null &&
+                        selectedRect.overlaps(Offset.zero & _displaySize))
+                      _deleteButton(selectedRect),
+                    if (_zoom > 1) _resetZoomButton(),
                   ],
                 );
               },
@@ -579,6 +713,9 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
     final origin = _deleteButtonOrigin(selected);
     void delete() => widget.controller.removeSelected();
     return Positioned(
+      // Keyed, so that the buttons never swap their Material, which would
+      // animate from the look of one to the other.
+      key: const ValueKey<String>('delete'),
       left: origin.dx,
       top: origin.dy,
       width: _deleteButtonSize,
@@ -609,6 +746,49 @@ class _BugScreenshotEditorState extends State<BugScreenshotEditor> {
       ),
     );
   }
+
+  Widget _resetZoomButton() {
+    const white = Color(0xFFFFFFFF);
+    return Positioned(
+      key: const ValueKey<String>('reset_zoom'),
+      right: 8,
+      bottom: 8,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: widget.resetZoomButtonLabel,
+        excludeSemantics: true,
+        onTap: _resetZoom,
+        child: Material(
+          color: const Color(0xB3000000),
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            key: BugScreenshotEditor.resetZoomButtonKey,
+            onTap: _resetZoom,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 6, 10, 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  const Icon(Icons.zoom_out_map, size: 16, color: white),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_zoom.toStringAsFixed(1)}×',
+                    style: const TextStyle(
+                      color: white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// The corners of [rect], clockwise from the top left, so the opposite of
@@ -627,61 +807,146 @@ double _clamp(double value, double min, double max) =>
 
 /// Takes every pointer that goes down on the editor right away, so a drag
 /// starts without delay and is never taken by an enclosing scroll view.
-class _AnnotationDragRecognizer extends OneSequenceGestureRecognizer {
-  _AnnotationDragRecognizer({super.debugOwner});
+///
+/// One finger drags. When a second one goes down, the drag is cancelled and
+/// the fingers pinch until they are all lifted: a finger left alone after a
+/// pinch pans, it never starts a drag.
+class _EditorGestureRecognizer extends OneSequenceGestureRecognizer {
+  _EditorGestureRecognizer({super.debugOwner});
 
-  ValueChanged<Offset>? onStart;
-  ValueChanged<Offset>? onUpdate;
-  VoidCallback? onEnd;
-  VoidCallback? onCancel;
+  /// Whether a second finger pinches. When `false`, it is ignored.
+  bool pinchEnabled = true;
 
-  /// The pointer being followed. Other fingers are ignored meanwhile.
-  int? _pointer;
+  ValueChanged<Offset>? onDragStart;
+  ValueChanged<Offset>? onDragUpdate;
+  VoidCallback? onDragEnd;
+  VoidCallback? onDragCancel;
+
+  /// The fingers of the pinch changed. Later updates are relative to here,
+  /// the center of the fingers.
+  ValueChanged<Offset>? onPinchStart;
+
+  /// The center of the fingers and how much farther apart they are than at
+  /// the last [onPinchStart]. One finger only pans, with a scale of 1.
+  void Function(Offset focal, double scale)? onPinchUpdate;
+  VoidCallback? onPinchEnd;
+
+  /// Where each finger is, in local coordinates.
+  final Map<int, Offset> _positions = <int, Offset>{};
+
+  /// The finger dragging, if no other has gone down since it did.
+  int? _dragPointer;
+  bool _pinching = false;
+
+  /// How far the fingers were from their center at the last [onPinchStart].
+  double _startSpan = 0;
 
   @override
   void addAllowedPointer(PointerDownEvent event) {
-    if (_pointer != null) return;
+    if (_positions.isNotEmpty && !pinchEnabled) return;
     super.addAllowedPointer(event);
-    _pointer = event.pointer;
-    resolve(GestureDisposition.accepted);
-    invokeCallback<void>('onStart', () => onStart?.call(event.localPosition));
+    resolvePointer(event.pointer, GestureDisposition.accepted);
+    _positions[event.pointer] = event.localPosition;
+    if (_positions.length == 1) {
+      _dragPointer = event.pointer;
+      invokeCallback<void>(
+        'onDragStart',
+        () => onDragStart?.call(event.localPosition),
+      );
+      return;
+    }
+    if (_dragPointer != null) {
+      _dragPointer = null;
+      invokeCallback<void>('onDragCancel', () => onDragCancel?.call());
+    }
+    _startPinch();
   }
 
   @override
   void handleEvent(PointerEvent event) {
-    if (event.pointer != _pointer) return;
+    final pointer = event.pointer;
+    if (!_positions.containsKey(pointer)) return;
     if (event is PointerMoveEvent) {
-      invokeCallback<void>(
-        'onUpdate',
-        () => onUpdate?.call(event.localPosition),
-      );
+      _positions[pointer] = event.localPosition;
+      if (pointer == _dragPointer) {
+        invokeCallback<void>(
+          'onDragUpdate',
+          () => onDragUpdate?.call(event.localPosition),
+        );
+      } else if (_pinching) {
+        _updatePinch();
+      }
     } else if (event is PointerUpEvent) {
-      _stop();
-      invokeCallback<void>('onEnd', () => onEnd?.call());
+      _remove(pointer, cancelled: false);
     } else if (event is PointerCancelEvent) {
-      _stop();
-      invokeCallback<void>('onCancel', () => onCancel?.call());
+      _remove(pointer, cancelled: true);
     }
   }
 
   @override
   void rejectGesture(int pointer) {
-    if (pointer != _pointer) return;
-    _stop();
-    invokeCallback<void>('onCancel', () => onCancel?.call());
+    if (_positions.containsKey(pointer)) _remove(pointer, cancelled: true);
   }
 
-  void _stop() {
-    final pointer = _pointer;
-    _pointer = null;
-    if (pointer != null) stopTrackingPointer(pointer);
+  void _remove(int pointer, {required bool cancelled}) {
+    _positions.remove(pointer);
+    stopTrackingPointer(pointer);
+    if (pointer == _dragPointer) {
+      _dragPointer = null;
+      if (cancelled) {
+        invokeCallback<void>('onDragCancel', () => onDragCancel?.call());
+      } else {
+        invokeCallback<void>('onDragEnd', () => onDragEnd?.call());
+      }
+    } else if (_pinching) {
+      if (_positions.isEmpty) {
+        _pinching = false;
+        invokeCallback<void>('onPinchEnd', () => onPinchEnd?.call());
+      } else {
+        _startPinch();
+      }
+    }
+  }
+
+  Offset get _focal {
+    var sum = Offset.zero;
+    for (final position in _positions.values) {
+      sum += position;
+    }
+    return sum / _positions.length.toDouble();
+  }
+
+  /// The mean distance of the fingers from [focal]: 0 for one finger.
+  double _spanAround(Offset focal) {
+    var sum = 0.0;
+    for (final position in _positions.values) {
+      sum += (position - focal).distance;
+    }
+    return sum / _positions.length;
+  }
+
+  void _startPinch() {
+    _pinching = true;
+    final focal = _focal;
+    _startSpan = _spanAround(focal);
+    invokeCallback<void>('onPinchStart', () => onPinchStart?.call(focal));
+  }
+
+  void _updatePinch() {
+    final focal = _focal;
+    final span = _spanAround(focal);
+    final scale = _startSpan > 0 && span > 0 ? span / _startSpan : 1.0;
+    invokeCallback<void>(
+      'onPinchUpdate',
+      () => onPinchUpdate?.call(focal, scale),
+    );
   }
 
   @override
   void didStopTrackingLastPointer(int pointer) {}
 
   @override
-  String get debugDescription => 'screenshot annotation drag';
+  String get debugDescription => 'screenshot editor gesture';
 }
 
 class _AnnotationPainter extends CustomPainter {
@@ -689,6 +954,7 @@ class _AnnotationPainter extends CustomPainter {
     required this.annotations,
     required this.selectedIndex,
     required this.scale,
+    required this.origin,
     required this.color,
     required this.strokeWidth,
     required this.highlight,
@@ -696,26 +962,40 @@ class _AnnotationPainter extends CustomPainter {
   });
 
   static const double _handleRadius = 6;
+  static const double _highlightStrokeWidth = 2;
   static const double _dashLength = 6;
   static const double _dashGap = 4;
 
   final List<BugScreenshotAnnotation> annotations;
   final int? selectedIndex;
+
+  /// Logical pixels on screen per image pixel.
   final double scale;
+
+  /// The image pixel at the top left corner.
+  final Offset origin;
   final Color color;
   final double strokeWidth;
   final Rect? highlight;
   final Color highlightColor;
 
   Rect _toDisplay(Rect rect) => Rect.fromLTRB(
-        rect.left * scale,
-        rect.top * scale,
-        rect.right * scale,
-        rect.bottom * scale,
+        (rect.left - origin.dx) * scale,
+        (rect.top - origin.dy) * scale,
+        (rect.right - origin.dx) * scale,
+        (rect.bottom - origin.dy) * scale,
       );
 
   @override
   void paint(Canvas canvas, Size size) {
+    final bounds = Offset.zero & size;
+    canvas
+      ..save()
+      // Zoomed in, rectangles go past the editor. The margin keeps the
+      // strokes on the edges of the image whole.
+      ..clipRect(bounds.inflate(
+        math.max(strokeWidth, _highlightStrokeWidth) / 2,
+      ));
     final highlight = this.highlight;
     if (highlight != null) {
       _paintDashedRect(
@@ -724,7 +1004,7 @@ class _AnnotationPainter extends CustomPainter {
         Paint()
           ..color = highlightColor
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 2,
+          ..strokeWidth = _highlightStrokeWidth,
       );
     }
 
@@ -739,6 +1019,7 @@ class _AnnotationPainter extends CustomPainter {
       }
       canvas.drawRect(rect, stroke);
     }
+    canvas.restore();
 
     final selected = selectedIndex;
     if (selected == null || selected >= annotations.length) return;
@@ -747,14 +1028,27 @@ class _AnnotationPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
+    // Corners on the edges stay, despite rounding; those out of view do not.
+    final visible = bounds.inflate(1);
     for (final corner in _cornersOf(_toDisplay(annotations[selected].rect))) {
+      if (!visible.contains(corner)) continue;
       canvas
         ..drawCircle(corner, _handleRadius, fill)
         ..drawCircle(corner, _handleRadius, outline);
     }
   }
 
-  void _paintDashedRect(Canvas canvas, Rect rect, Paint paint) {
+  /// Strokes [rect] with dashes [unit] times as long as on screen, for
+  /// example `pixelRatio` in an image. [BugScreenshot.toAnnotatedPng] draws
+  /// the highlight with it too.
+  static void _paintDashedRect(
+    Canvas canvas,
+    Rect rect,
+    Paint paint, {
+    double unit = 1,
+  }) {
+    final dash = _dashLength * unit;
+    final step = (_dashLength + _dashGap) * unit;
     final corners = _cornersOf(rect);
     for (var i = 0; i < corners.length; i++) {
       final from = corners[i];
@@ -762,8 +1056,8 @@ class _AnnotationPainter extends CustomPainter {
       final length = (to - from).distance;
       if (length == 0) continue;
       final direction = (to - from) / length;
-      for (var start = 0.0; start < length; start += _dashLength + _dashGap) {
-        final end = math.min(start + _dashLength, length);
+      for (var start = 0.0; start < length; start += step) {
+        final end = math.min(start + dash, length);
         canvas.drawLine(
             from + direction * start, from + direction * end, paint);
       }
@@ -775,6 +1069,7 @@ class _AnnotationPainter extends CustomPainter {
       !listEquals(oldDelegate.annotations, annotations) ||
       oldDelegate.selectedIndex != selectedIndex ||
       oldDelegate.scale != scale ||
+      oldDelegate.origin != origin ||
       oldDelegate.color != color ||
       oldDelegate.strokeWidth != strokeWidth ||
       oldDelegate.highlight != highlight ||

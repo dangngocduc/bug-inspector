@@ -7,7 +7,12 @@ part of '../flutter_qa_inspector.dart';
 /// away to find the widget's `Navigator`, for example to open a bug report
 /// form. After an `await`, check `widgetContext.mounted` before using it
 /// again.
-typedef BugWidgetSelectedCallback = void Function(
+///
+/// Return a [Future] that completes when the report is closed, for example
+/// the one of `Navigator.push` for the report route: the floating bug button
+/// hides until it completes, so it never covers the report. A callback that
+/// returns nothing leaves the button on screen.
+typedef BugWidgetSelectedCallback = FutureOr<void> Function(
   BuildContext widgetContext,
   BugWidgetSelection selection,
 );
@@ -194,6 +199,9 @@ class BugInspector extends StatelessWidget {
   /// Set it to `false` when the app enables the mode from its own QA menu.
   /// While selecting, the floating toolbar is always shown, because the app
   /// content does not receive taps and the toolbar is the way out.
+  ///
+  /// The button also hides while the [Future] returned by [onWidgetSelected]
+  /// runs, that is while the bug report is open.
   final bool showLauncher;
 
   /// Where the floating control starts, inside the safe area. The tester can
@@ -249,6 +257,13 @@ class BugInspector extends StatelessWidget {
   /// frame so that a mode change made just before, such as the borders being
   /// removed after a selection, is visible in the image.
   ///
+  /// The system status bar is not part of the app, so the image only shows
+  /// the app background under it. When [statusBar] is `true` and the content
+  /// is under the top safe area on Android or iOS, the screenshot gets a
+  /// [BugScreenshot.statusBar] that fills that area: a Pixel 8 bar on
+  /// Android, a Dynamic Island bar on iOS, with the capture time and black
+  /// or white icons, whichever shows on the app background.
+  ///
   /// Capture before opening a form on top of the content. Returns `null` when
   /// [context] is not below an enabled [BugInspector] or the content cannot be
   /// captured.
@@ -256,12 +271,14 @@ class BugInspector extends StatelessWidget {
     BuildContext context, {
     double? pixelRatio,
     bool waitForNextFrame = true,
+    bool statusBar = true,
   }) {
     if (!enabledFromEnvironment) return Future<BugScreenshot?>.value();
     return _captureScreenshot(
       context,
       pixelRatio: pixelRatio,
       waitForNextFrame: waitForNextFrame,
+      statusBar: statusBar,
     );
   }
 
@@ -290,6 +307,10 @@ class _BugInspectorState extends State<_BugInspectorHost> {
 
   /// Where the tester dragged the floating control, kept across mode changes.
   Alignment? _floatingAlignment;
+
+  /// How many futures returned by [BugInspector.onWidgetSelected] are still
+  /// running. The launcher hides while one runs: a bug report is open.
+  int _openReports = 0;
 
   BugInspector get _inspector => widget.inspector;
 
@@ -392,7 +413,29 @@ class _BugInspectorState extends State<_BugInspectorHost> {
     final widgetContext = node._markerContext;
 
     if (_inspector.disableModeOnSelection) _modeCubit.disable();
-    _inspector.onWidgetSelected(widgetContext, selection);
+    final report = _inspector.onWidgetSelected(widgetContext, selection);
+    if (report is Future<void>) _hideLauncherUntil(report);
+  }
+
+  /// Hides the launcher until [report] completes. An error of [report] is
+  /// reported to [FlutterError.onError], as it would be without the host.
+  void _hideLauncherUntil(Future<void> report) {
+    setState(() => _openReports++);
+    report.then<void>(
+      (_) {},
+      onError: (Object error, StackTrace stack) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            library: 'flutter_qa_inspector',
+            context: ErrorDescription('while running onWidgetSelected'),
+          ),
+        );
+      },
+    ).whenComplete(() {
+      if (mounted) setState(() => _openReports--);
+    });
   }
 
   @override
@@ -449,7 +492,7 @@ class _BugInspectorState extends State<_BugInspectorHost> {
           key: const ValueKey<String>('bug_inspector.floating_layer'),
           child: _FloatingControl(
             selecting: selecting,
-            showLauncher: _inspector.showLauncher,
+            showLauncher: _inspector.showLauncher && _openReports == 0,
             alignment: _floatingAlignment ??
                 _inspector.floatingAlignment
                     .resolve(textDirection ?? TextDirection.ltr),

@@ -38,6 +38,7 @@ Future<BugScreenshotAnnotationController> _pumpEditor(
   int? selected,
   bool readOnly = false,
   Rect? highlight,
+  double maxZoom = BugScreenshotEditor.defaultMaxZoom,
 }) async {
   final controller = BugScreenshotAnnotationController(annotations)
     ..select(selected);
@@ -54,6 +55,7 @@ Future<BugScreenshotAnnotationController> _pumpEditor(
               controller: controller,
               readOnly: readOnly,
               highlight: highlight,
+              maxZoom: maxZoom,
             ),
           ),
         ),
@@ -75,7 +77,34 @@ Future<void> _drag(WidgetTester tester, Offset from, Offset to) async {
   await tester.pump();
 }
 
+/// Puts two fingers down at [from], moves them to [to], one point per
+/// finger, then lifts them.
+Future<void> _pinch(
+  WidgetTester tester,
+  (Offset, Offset) from,
+  (Offset, Offset) to,
+) async {
+  final first = await tester.startGesture(from.$1);
+  final second = await tester.startGesture(from.$2);
+  await first.moveTo(to.$1);
+  await second.moveTo(to.$2);
+  await first.up();
+  await second.up();
+  await tester.pump();
+}
+
+/// Spreads two fingers around the center of the editor to twice their
+/// distance: the image is then shown at 2x, with image pixel (50, 25) at the
+/// top left corner and four logical pixels per image pixel.
+Future<void> _zoomInTwice(WidgetTester tester) => _pinch(
+      tester,
+      (_at(tester, 150, 100), _at(tester, 250, 100)),
+      (_at(tester, 100, 100), _at(tester, 300, 100)),
+    );
+
 final Finder _deleteButton = find.byKey(BugScreenshotEditor.deleteButtonKey);
+final Finder _resetZoomButton =
+    find.byKey(BugScreenshotEditor.resetZoomButtonKey);
 
 void main() {
   group('BugScreenshotAnnotation', () {
@@ -437,6 +466,283 @@ void main() {
         await tester.pump();
         expect(scroll.offset, greaterThan(0));
       });
+
+      testWidgets('two fingers zoom in around them', (tester) async {
+        final controller = await _pumpEditor(
+          tester,
+          annotations: [_annotation(100, 50, 120, 60)],
+        );
+        expect(_resetZoomButton, findsNothing);
+
+        await _zoomInTwice(tester);
+
+        // The rectangle is drawn twice as large, from where the image pixel
+        // (100, 50) under the fingers stayed.
+        expect(controller.annotations, <Object>[_annotation(100, 50, 120, 60)]);
+        expect(
+          find.byType(BugScreenshotEditor),
+          paints
+            ..rect(
+              rect: const Rect.fromLTRB(200, 100, 280, 140),
+              style: PaintingStyle.stroke,
+              strokeWidth: BugScreenshotEditor.defaultStrokeWidth,
+            ),
+        );
+        expect(_resetZoomButton, findsOneWidget);
+        expect(find.text('2.0×'), findsOneWidget);
+      });
+
+      testWidgets('one finger on the zoomed image edits in image pixels',
+          (tester) async {
+        final controller = await _pumpEditor(tester);
+        await _zoomInTwice(tester);
+
+        await _drag(tester, _at(tester, 40, 40), _at(tester, 120, 80));
+        expect(controller.annotations, <Object>[_annotation(60, 35, 80, 45)]);
+        expect(
+          find.byType(BugScreenshotEditor),
+          paints
+            // Selected: filled, then stroked.
+            ..rect(rect: const Rect.fromLTRB(40, 40, 120, 80))
+            ..rect(
+              rect: const Rect.fromLTRB(40, 40, 120, 80),
+              style: PaintingStyle.stroke,
+            ),
+        );
+
+        // 40 logical pixels are 10 image pixels.
+        await _drag(tester, _at(tester, 80, 60), _at(tester, 120, 100));
+        expect(controller.annotations, <Object>[_annotation(70, 45, 90, 55)]);
+      });
+
+      testWidgets('a second finger undoes the edit of the first one',
+          (tester) async {
+        final controller = await _pumpEditor(
+          tester,
+          annotations: [_annotation(10, 10, 50, 30)],
+        );
+
+        // Drawing.
+        var first = await tester.startGesture(_at(tester, 200, 100));
+        await first.moveTo(_at(tester, 300, 160));
+        expect(controller.annotations, hasLength(2));
+        var second = await tester.startGesture(_at(tester, 380, 20));
+        expect(controller.annotations, <Object>[_annotation(10, 10, 50, 30)]);
+        expect(controller.selectedIndex, isNull);
+        await first.up();
+        await second.up();
+
+        // Moving.
+        first = await tester.startGesture(_at(tester, 60, 40));
+        await first.moveTo(_at(tester, 100, 60));
+        expect(controller.annotations, <Object>[_annotation(30, 20, 70, 40)]);
+        second = await tester.startGesture(_at(tester, 380, 20));
+        expect(controller.annotations, <Object>[_annotation(10, 10, 50, 30)]);
+        expect(controller.selectedIndex, isNull);
+
+        // Until both are lifted, the first one pinches instead of editing:
+        // moving away from the second one zooms in.
+        await first.moveTo(_at(tester, 60, 40));
+        await first.up();
+        await second.up();
+        await tester.pump();
+        expect(controller.annotations, <Object>[_annotation(10, 10, 50, 30)]);
+        expect(_resetZoomButton, findsOneWidget);
+      });
+
+      testWidgets('a finger left after a pinch pans and does not draw',
+          (tester) async {
+        final controller = await _pumpEditor(tester);
+        final first = await tester.startGesture(_at(tester, 150, 100));
+        final second = await tester.startGesture(_at(tester, 250, 100));
+        await first.moveTo(_at(tester, 100, 100));
+        await second.moveTo(_at(tester, 300, 100));
+        await first.up();
+
+        // 100 x 50 logical pixels are 25 x 12.5 image pixels.
+        await second.moveTo(_at(tester, 200, 50));
+        await second.up();
+        await tester.pump();
+        expect(controller.annotations, isEmpty);
+
+        // The top left corner is now the image pixel (75, 37.5).
+        await _drag(tester, _at(tester, 40, 40), _at(tester, 120, 80));
+        expect(
+          controller.annotations,
+          <Object>[_annotation(85, 47.5, 105, 57.5)],
+        );
+      });
+
+      testWidgets('two fingers pan the zoomed image, staying inside it',
+          (tester) async {
+        await _pumpEditor(
+          tester,
+          annotations: [_annotation(10, 10, 50, 30)],
+        );
+        await _zoomInTwice(tester);
+
+        await _pinch(
+          tester,
+          (_at(tester, 100, 100), _at(tester, 300, 100)),
+          (_at(tester, 1100, 1100), _at(tester, 1300, 1100)),
+        );
+
+        // Back to the top left corner of the image, still at 2x.
+        expect(
+          find.byType(BugScreenshotEditor),
+          paints
+            ..rect(
+              rect: const Rect.fromLTRB(40, 40, 200, 120),
+              style: PaintingStyle.stroke,
+            ),
+        );
+        expect(find.text('2.0×'), findsOneWidget);
+      });
+
+      testWidgets('zooms from fit to maxZoom', (tester) async {
+        await _pumpEditor(
+          tester,
+          annotations: [_annotation(10, 10, 50, 30)],
+          maxZoom: 3,
+        );
+
+        // Pinching in at fit does nothing.
+        await _pinch(
+          tester,
+          (_at(tester, 100, 100), _at(tester, 300, 100)),
+          (_at(tester, 190, 100), _at(tester, 210, 100)),
+        );
+        expect(_resetZoomButton, findsNothing);
+
+        await _pinch(
+          tester,
+          (_at(tester, 190, 100), _at(tester, 210, 100)),
+          (_at(tester, 0, 100), _at(tester, 400, 100)),
+        );
+        expect(find.text('3.0×'), findsOneWidget);
+      });
+
+      testWidgets('a pinch ending close to fit goes back to it',
+          (tester) async {
+        await _pumpEditor(tester);
+
+        await _pinch(
+          tester,
+          (_at(tester, 150, 100), _at(tester, 250, 100)),
+          (_at(tester, 149, 100), _at(tester, 251, 100)),
+        );
+
+        expect(_resetZoomButton, findsNothing);
+      });
+
+      testWidgets('the zoom button resets the zoom', (tester) async {
+        final semantics = tester.ensureSemantics();
+        await _pumpEditor(
+          tester,
+          annotations: [_annotation(10, 10, 50, 30)],
+        );
+        await _zoomInTwice(tester);
+
+        expect(
+          tester.getSemantics(_resetZoomButton),
+          isSemantics(
+            label: BugScreenshotEditor.defaultResetZoomButtonLabel,
+            isButton: true,
+            hasTapAction: true,
+          ),
+        );
+
+        await tester.tap(_resetZoomButton);
+        await tester.pump();
+
+        expect(_resetZoomButton, findsNothing);
+        expect(
+          find.byType(BugScreenshotEditor),
+          paints
+            ..rect(
+              rect: const Rect.fromLTRB(20, 20, 100, 60),
+              style: PaintingStyle.stroke,
+            ),
+        );
+        semantics.dispose();
+      });
+
+      testWidgets('a selected rectangle out of view has no button or handle',
+          (tester) async {
+        await _pumpEditor(
+          tester,
+          annotations: [_annotation(10, 10, 50, 30)],
+          selected: 0,
+        );
+        expect(_deleteButton, findsOneWidget);
+
+        // Around the bottom right: the image pixel (75, 37.5) is at the top
+        // left corner, past the rectangle.
+        await _pinch(
+          tester,
+          (_at(tester, 250, 150), _at(tester, 350, 150)),
+          (_at(tester, 200, 150), _at(tester, 400, 150)),
+        );
+
+        expect(_deleteButton, findsNothing);
+        expect(find.byType(BugScreenshotEditor), isNot(paints..circle()));
+
+        await tester.tap(_resetZoomButton);
+        await tester.pump();
+        expect(_deleteButton, findsOneWidget);
+      });
+
+      testWidgets('maxZoom 1 ignores a second finger', (tester) async {
+        final controller = await _pumpEditor(tester, maxZoom: 1);
+
+        final first = await tester.startGesture(_at(tester, 20, 20));
+        final second = await tester.startGesture(_at(tester, 300, 150));
+        await first.moveTo(_at(tester, 120, 80));
+        await second.moveTo(_at(tester, 380, 190));
+        await first.up();
+        await second.up();
+        await tester.pump();
+
+        expect(controller.annotations, <Object>[_annotation(10, 10, 60, 40)]);
+        expect(_resetZoomButton, findsNothing);
+      });
+
+      testWidgets('readOnly goes back to fit', (tester) async {
+        final controller = BugScreenshotAnnotationController(
+          <BugScreenshotAnnotation>[_annotation(10, 10, 50, 30)],
+        );
+        addTearDown(controller.dispose);
+        Widget editor({required bool readOnly}) => MaterialApp(
+              home: Scaffold(
+                body: Center(
+                  child: SizedBox(
+                    width: 400,
+                    height: 200,
+                    child: BugScreenshotEditor(
+                      screenshot: _screenshot(),
+                      controller: controller,
+                      readOnly: readOnly,
+                    ),
+                  ),
+                ),
+              ),
+            );
+        await tester.pumpWidget(editor(readOnly: false));
+        await _zoomInTwice(tester);
+        expect(_resetZoomButton, findsOneWidget);
+
+        await tester.pumpWidget(editor(readOnly: true));
+
+        expect(_resetZoomButton, findsNothing);
+        expect(
+          find.byType(BugScreenshotEditor),
+          paints
+            ..rect(
+              rect: const Rect.fromLTRB(20, 20, 100, 60),
+              style: PaintingStyle.stroke,
+            ),
+        );
+      });
     });
 
     group('toAnnotatedPng', () {
@@ -478,6 +784,48 @@ void main() {
         expect(pixels!.at(6, 20), red);
         expect(pixels.at(13, 20), red);
         expect(pixels.at(15, 20), const Color(0xFFFFFFFF));
+      });
+
+      testWidgets('outlines the highlight with dashes', (tester) async {
+        const red = Color(0xFFFF0000);
+        const white = Color(0xFFFFFFFF);
+        final pixels = await tester.runAsync(() async {
+          final screenshot = await _whiteScreenshot(40, 40);
+          final png = await screenshot.toAnnotatedPng(
+            const <BugScreenshotAnnotation>[],
+            highlight: const Rect.fromLTWH(10, 10, 20, 20),
+            highlightColor: red,
+          );
+          return _decode(png);
+        });
+
+        // Dashes of 6 pixels, gaps of 4, 2 pixels wide.
+        expect(pixels!.at(12, 10), red);
+        expect(pixels.at(17, 10), white);
+        expect(pixels.at(22, 10), red);
+        // The left edge goes up from the bottom left corner.
+        expect(pixels.at(10, 27), red);
+        expect(pixels.at(20, 20), white);
+      });
+
+      testWidgets('scales the highlight with the pixel ratio', (tester) async {
+        const red = Color(0xFFFF0000);
+        final pixels = await tester.runAsync(() async {
+          final screenshot = await _whiteScreenshot(80, 80, pixelRatio: 2);
+          final png = await screenshot.toAnnotatedPng(
+            const <BugScreenshotAnnotation>[],
+            // Global logical pixels: 20 to 60 image pixels.
+            highlight: const Rect.fromLTWH(10, 10, 20, 20),
+            highlightColor: red,
+          );
+          return _decode(png);
+        });
+
+        // Dashes of 12 image pixels, gaps of 8, 4 pixels wide.
+        expect(pixels!.at(25, 21), red);
+        expect(pixels.at(25, 18), red);
+        expect(pixels.at(35, 21), const Color(0xFFFFFFFF));
+        expect(pixels.at(45, 21), red);
       });
 
       test('without annotations returns the original bytes', () async {

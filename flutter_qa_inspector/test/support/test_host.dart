@@ -34,7 +34,7 @@ Future<List<BugWidgetSelection>> pumpHost(
         selectPageOnEmptyTap: selectPageOnEmptyTap,
         onWidgetSelected: (widgetContext, selection) {
           selections.add(selection);
-          onWidgetSelected?.call(widgetContext, selection);
+          return onWidgetSelected?.call(widgetContext, selection);
         },
         child: child ?? const SizedBox.shrink(),
       ),

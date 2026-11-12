@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
-import 'bug_report_sheet.dart';
+import 'bug_report_page.dart';
 import 'counter_page.dart';
 
 class ExampleApp extends StatelessWidget {
@@ -55,20 +55,16 @@ class ExampleApp extends StatelessWidget {
     BugWidgetSelection selection,
   ) async {
     // The inspector has already left the selecting mode. The screenshot waits
-    // for the frame without borders and is taken before the sheet opens.
+    // for the frame without borders and is taken before the report opens.
     final screenshot = captureScreenshots
         ? await BugInspector.captureScreenshot(widgetContext)
         : null;
     if (!widgetContext.mounted) return;
 
-    await showModalBottomSheet<void>(
-      context: widgetContext,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => BugReportSheet(
-        selection: selection,
-        screenshot: screenshot,
-      ),
+    await BugReportPage.open(
+      widgetContext,
+      selection: selection,
+      screenshot: screenshot,
     );
   }
 }

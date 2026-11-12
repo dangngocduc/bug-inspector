@@ -1,3 +1,35 @@
+## 0.7.0
+
+- `BugScreenshotEditor` zooms with two fingers, up to `maxZoom` (default 5,
+  `1` turns zooming off), and two fingers pan the zoomed image, so the tester
+  can draw and adjust small rectangles precisely. A second finger undoes what
+  the first one was drawing, moving or resizing, and the fingers only zoom
+  until they are all lifted. A pinch that ends close to the fit goes back to
+  it. While zoomed in, a button in the bottom right corner
+  (`BugScreenshotEditor.resetZoomButtonKey`, `resetZoomButtonLabel`) shows
+  the zoom and resets it. Strokes, handles and touch areas keep their size on
+  screen at any zoom, and the delete button hides while its rectangle is out
+  of view. `readOnly` editors do not zoom.
+- `BugScreenshot.toAnnotatedPng` takes the editor's `highlight` (and
+  `highlightColor`) and outlines it with the same dashes, under the
+  rectangles, so the exported image looks like the editor. With a
+  `highlight`, it encodes a new image even without rectangles.
+- `onWidgetSelected` may return a `Future` (`BugWidgetSelectedCallback`
+  returns `FutureOr<void>`). The floating bug button hides until it
+  completes, so return the future of the report route to keep the button off
+  the report. An error of the future goes to `FlutterError.onError`.
+  Callbacks that return nothing keep the button, as before.
+- Screenshots get a fake status bar over the top safe area, since the
+  system's own is not part of the capture: a Pixel 8 bar on Android (clock,
+  punch-hole camera, Wi-Fi, signal, battery) and a Dynamic Island bar on iOS.
+  It matches the height of the safe area, shows the capture time (24-hour
+  when the device uses it) and picks black or white icons from the app
+  background. `BugInspector.captureScreenshot` adds it as
+  `BugScreenshot.statusBar` (`BugStatusBar`, `BugStatusBarStyle`);
+  `statusBar: false` leaves it out. The editor and `toAnnotatedPng` draw it
+  under the highlight and the rectangles, so `toAnnotatedPng` encodes a new
+  image even with nothing else to draw. `BugScreenshot.toJson` describes it.
+
 ## 0.6.0
 
 - `BugScreenshotEditor` lets the tester mark a `BugScreenshot` with

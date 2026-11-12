@@ -11,6 +11,7 @@ class BugScreenshot {
     required this.pixelRatio,
     required this.contentBounds,
     required this.capturedAtUtc,
+    this.statusBar,
   });
 
   /// The encoded PNG image.
@@ -34,6 +35,14 @@ class BugScreenshot {
   /// is taken in a later frame.
   final DateTime capturedAtUtc;
 
+  /// The fake status bar drawn over the top of the image, if any.
+  ///
+  /// It is not in [pngBytes]: the [BugScreenshotEditor] and
+  /// [toAnnotatedPng] draw it, under the highlight and the rectangles.
+  /// [BugInspector.captureScreenshot] adds it when the content is under the
+  /// top safe area on Android or iOS.
+  final BugStatusBar? statusBar;
+
   /// Converts [globalRect], for example [BugWidgetSelection.bounds], from
   /// global logical pixels into pixels of this image.
   Rect toImageRect(Rect globalRect) {
@@ -45,21 +54,31 @@ class BugScreenshot {
     );
   }
 
-  /// Encodes this image with [annotations] drawn on it as a PNG.
+  /// Encodes this image as a PNG with what a [BugScreenshotEditor] draws on
+  /// it: the [statusBar], the [highlight] outline and the [annotations].
   ///
-  /// Each rectangle is stroked with [color], [strokeWidth] logical pixels wide
-  /// (`strokeWidth * pixelRatio` image pixels), like in a
-  /// [BugScreenshotEditor] shown at the size of the app. Returns [pngBytes]
-  /// when there are no annotations, and without
+  /// The [statusBar] is drawn at [pixelRatio] image pixels per logical pixel.
+  /// Pass the `highlight` given to the editor, in global logical pixels, for
+  /// example [BugWidgetSelection.bounds]. It is outlined with dashes of
+  /// [highlightColor], under the rectangles. Each rectangle is stroked with
+  /// [color], [strokeWidth] logical pixels wide (`strokeWidth * pixelRatio`
+  /// image pixels), like in an editor shown at the size of the app.
+  ///
+  /// Returns [pngBytes] when there is nothing to draw, and without
   /// `--dart-define=FLUTTER_QA_INSPECTOR=true`.
   Future<Uint8List> toAnnotatedPng(
     Iterable<BugScreenshotAnnotation> annotations, {
+    Rect? highlight,
     Color color = BugScreenshotEditor.defaultColor,
     double strokeWidth = BugScreenshotEditor.defaultStrokeWidth,
+    Color highlightColor = BugInspector.defaultBorderColor,
   }) async {
     if (!BugInspector.enabledFromEnvironment) return pngBytes;
     final rects = <Rect>[for (final annotation in annotations) annotation.rect];
-    if (rects.isEmpty) return pngBytes;
+    final statusBar = this.statusBar;
+    if (rects.isEmpty && highlight == null && statusBar == null) {
+      return pngBytes;
+    }
 
     final codec = await ui.instantiateImageCodec(pngBytes);
     ui.Image? source;
@@ -68,6 +87,25 @@ class BugScreenshot {
       source = (await codec.getNextFrame()).image;
       final recorder = ui.PictureRecorder();
       final canvas = Canvas(recorder)..drawImage(source, Offset.zero, Paint());
+      if (statusBar != null && pixelRatio > 0) {
+        canvas
+          ..save()
+          ..scale(pixelRatio);
+        statusBar._paint(canvas, source.width / pixelRatio);
+        canvas.restore();
+      }
+      if (highlight != null) {
+        _AnnotationPainter._paintDashedRect(
+          canvas,
+          toImageRect(highlight),
+          Paint()
+            ..color = highlightColor
+            ..style = PaintingStyle.stroke
+            ..strokeWidth =
+                _AnnotationPainter._highlightStrokeWidth * pixelRatio,
+          unit: pixelRatio,
+        );
+      }
       final stroke = Paint()
         ..color = color
         ..style = PaintingStyle.stroke
@@ -106,6 +144,7 @@ class BugScreenshot {
           'coordinateUnit': 'logical_pixels',
         },
         'capturedAtUtc': capturedAtUtc.toUtc().toIso8601String(),
+        if (statusBar != null) 'statusBar': statusBar!.toJson(),
       };
 }
 
@@ -113,6 +152,7 @@ Future<BugScreenshot?> _captureScreenshot(
   BuildContext context, {
   required double? pixelRatio,
   required bool waitForNextFrame,
+  required bool statusBar,
 }) async {
   final scope = context.getInheritedWidgetOfExactType<_BugInspectorScope>();
   if (scope == null) return null;
@@ -134,13 +174,25 @@ Future<BugScreenshot?> _captureScreenshot(
     return true;
   }());
   if (needsPaint) await WidgetsBinding.instance.endOfFrame;
-  if (!boundary.attached) return null;
+  final boundaryContext = contentKey.currentContext;
+  if (!boundary.attached ||
+      boundaryContext == null ||
+      !boundaryContext.mounted) {
+    return null;
+  }
 
   final contentBounds = MatrixUtils.transformRect(
     boundary.getTransformTo(null),
     Offset.zero & boundary.size,
   );
   final capturedAtUtc = DateTime.now().toUtc();
+  final statusBarStyle =
+      statusBar ? BugStatusBarStyle.of(defaultTargetPlatform) : null;
+  final statusBarHeight = statusBarStyle == null
+      ? 0.0
+      : _statusBarHeight(boundaryContext, contentBounds);
+  final use24HourClock =
+      MediaQuery.maybeAlwaysUse24HourFormatOf(boundaryContext) ?? false;
   final image = await boundary.toImage(pixelRatio: ratio);
   try {
     final data = await image.toByteData(format: ui.ImageByteFormat.png);
@@ -152,6 +204,20 @@ Future<BugScreenshot?> _captureScreenshot(
       pixelRatio: ratio,
       contentBounds: contentBounds,
       capturedAtUtc: capturedAtUtc,
+      statusBar: statusBarStyle == null || statusBarHeight <= 0
+          ? null
+          : BugStatusBar(
+              style: statusBarStyle,
+              height: statusBarHeight,
+              time: _statusBarClock(
+                capturedAtUtc.toLocal(),
+                use24Hour: use24HourClock,
+              ),
+              foregroundColor: await _statusBarForeground(
+                image,
+                (statusBarHeight * ratio).ceil(),
+              ),
+            ),
     );
   } finally {
     image.dispose();

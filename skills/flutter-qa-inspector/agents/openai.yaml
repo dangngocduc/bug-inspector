@@ -1,0 +1,3 @@
+interface:
+  display_name: "Flutter QA Inspector"
+  short_description: "Tích hợp inspector và phân tích bug report ZIP Flutter"

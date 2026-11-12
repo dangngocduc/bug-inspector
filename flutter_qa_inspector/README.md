@@ -42,8 +42,11 @@ void main() {
       // Không cần if: thiếu define thì BugInspector chỉ trả về child.
       builder: (context, child) => BugInspector(
         stateRecorder: recorder,
+        // Trả về Future của route báo lỗi: nút bug nổi ẩn cho đến khi
+        // Future hoàn tất, nên không che form.
         onWidgetSelected: (widgetContext, selection) {
           // Mở form báo lỗi với selection.toJson().
+          return Navigator.of(widgetContext).push(/* route báo lỗi */);
         },
         // Giữ child của builder để Navigator/Router tiếp tục hoạt động.
         child: child ?? const SizedBox.shrink(),
@@ -179,9 +182,10 @@ Trên bản QA, `enabled: false` tắt inspector giống như khi không có def
 | `BugInspectorBlocObserver` | Ghi `created`, `closed`, `error` (BLoC và Cubit), `event`, `transition` (BLoC), `change` (Cubit). Bỏ qua `InspectModeCubit`; có `filter` tùy chọn. Lỗi khi ghi (ví dụ `filter` ném lỗi) bị bỏ qua, không lan sang `emit`/`add` của app. |
 | `BugWidgetSelection`, `BugBlocSnapshot`, `BugWidgetStateSnapshot`, `BugStateRecord` | Dữ liệu trả về, có `toJson()`. `BugWidgetSelection.kind` là `widget` hoặc `page`. |
 | `BugInspector.captureScreenshot` / `BugScreenshot` | Chụp PNG nội dung app (không gồm widget nổi và các lớp của inspector) và đổi bounds sang tọa độ ảnh. |
-| `BugScreenshotEditor` | Hiện ảnh chụp và cho tester vẽ, chọn, kéo, đổi kích thước và xóa các khung chữ nhật. `readOnly: true` chỉ hiện ảnh và các khung. |
+| `BugScreenshotEditor` | Hiện ảnh chụp và cho tester vẽ, chọn, kéo, đổi kích thước và xóa các khung chữ nhật, và phóng to ảnh bằng hai ngón tay. `readOnly: true` chỉ hiện ảnh và các khung. |
 | `BugScreenshotAnnotationController`, `BugScreenshotAnnotation` | Giữ danh sách khung (tọa độ pixel của ảnh) và khung đang chọn. `toJson()` cho payload. |
-| `BugScreenshot.toAnnotatedPng` | Vẽ các khung lên ảnh và trả về PNG mới để đính kèm. |
+| `BugScreenshot.toAnnotatedPng` | Vẽ lên ảnh những gì editor hiện (status bar giả, viền `highlight` và các khung) và trả về PNG mới để đính kèm. |
+| `BugStatusBar`, `BugStatusBarStyle` | Status bar giả phủ vùng safe area phía trên của ảnh: kiểu Pixel 8 (`android`) hoặc Dynamic Island (`iOS`). |
 | `BugInspector.launcherKey`, `exitButtonKey`, `pageButtonKey` | Key của các nút trên widget nổi, dùng cho widget test và integration test. |
 
 Tham số chính của `BugInspector`:
@@ -194,7 +198,7 @@ Tham số chính của `BugInspector`:
 | `historyWindow` | 30 giây | Cửa sổ thời gian của `stateHistory`. |
 | `disableModeOnSelection` | `true` | Nếu `false`, tự tắt mode trước khi mở form trong Navigator bên dưới overlay. |
 | `selectionTrigger` | `tapUp` | `tapUp` chỉ chọn khi Flutter đã xác nhận tap (kéo không chọn). `tapDown` chọn ngay khi chạm xuống. |
-| `showLauncher` | `true` | Hiện nút bug nổi khi mode đang tắt. Đặt `false` nếu app bật mode từ menu QA riêng. Thanh công cụ nổi luôn hiện khi đang chọn. |
+| `showLauncher` | `true` | Hiện nút bug nổi khi mode đang tắt. Đặt `false` nếu app bật mode từ menu QA riêng. Thanh công cụ nổi luôn hiện khi đang chọn. Nút cũng ẩn trong lúc `Future` mà `onWidgetSelected` trả về chưa hoàn tất (form báo lỗi đang mở). |
 | `floatingAlignment` | giữa cạnh cuối | Vị trí ban đầu của widget nổi, trong safe area. |
 | `selectionHint` | `Tap a highlighted widget` | Dòng hướng dẫn trên thanh công cụ. |
 | `borderColor`, `borderWidth` | `#FF2D78`, 2 | Giá trị mặc định cho mọi `BugInspectable` bên dưới. |
@@ -303,6 +307,8 @@ onWidgetSelected: (widgetContext, selection) async {
 
 `captureScreenshot` chụp `child` của host, không gồm overlay của inspector. Với `disableModeOnSelection: false`, tắt mode trước khi chụp để ảnh không có viền. `BugScreenshot.capturedAtUtc` được ghi riêng vì ảnh được chụp ở frame sau snapshot.
 
+Status bar của hệ thống không nằm trong app nên ảnh chụp chỉ có nền app ở vùng đó. Khi nội dung nằm dưới safe area phía trên trên Android hoặc iOS, `captureScreenshot` thêm `BugScreenshot.statusBar`: một status bar giả cao đúng bằng phần safe area đó, kiểu Pixel 8 trên Android (giờ, camera đục lỗ, Wi-Fi, sóng, pin) và kiểu Dynamic Island trên iOS. Đồng hồ là giờ chụp (24 giờ nếu máy dùng 24 giờ), sóng, Wi-Fi và pin luôn đầy, icon màu đen hoặc trắng tùy nền app ở vùng đó. Status bar không nằm trong `pngBytes`: `BugScreenshotEditor` (cả `readOnly`) và `toAnnotatedPng` vẽ nó dưới viền `highlight` và các khung. `captureScreenshot(context, statusBar: false)` bỏ status bar.
+
 ## Đánh dấu trên ảnh chụp
 
 Tester vẽ khung chữ nhật lên ảnh chụp để chỉ thêm các chỗ khác, ví dụ một nhãn sai hay một icon bị thiếu. App giữ một `BugScreenshotAnnotationController` trong form báo lỗi:
@@ -326,7 +332,11 @@ const Text('Chạm vào ảnh để đánh dấu vùng lỗi'),
 BugScreenshotEditor(screenshot: screenshot, controller: annotations)
 
 // Khi gửi:
-final png = await screenshot.toAnnotatedPng(annotations.annotations);
+// Truyền cùng highlight với editor để ảnh xuất ra giống ảnh tester thấy.
+final png = await screenshot.toAnnotatedPng(
+  annotations.annotations,
+  highlight: selection.bounds,
+);
 final json = {...screenshot.toJson(), 'annotations': annotations.toJson()};
 ```
 
@@ -337,8 +347,9 @@ Thao tác trong `BugScreenshotEditor`:
 - Kéo một trong 4 tay nắm ở góc khung đang chọn để đổi kích thước; góc đối diện đứng yên. Kéo qua góc đối diện thì khung lật lại.
 - Nút ✕ cạnh khung đang chọn (`BugScreenshotEditor.deleteButtonKey`) xóa khung đó. App cũng có thể gọi `removeSelected()`, `removeAt()` hoặc `clear()` trên controller.
 - Khung luôn nằm trong ảnh và nhỏ nhất `minRectSize` (16) logical pixel trên màn hình.
+- Dùng hai ngón tay để phóng to ảnh (tối đa `maxZoom`, mặc định 5 lần) và di chuyển ảnh đã phóng to, để vẽ và chỉnh khung chính xác hơn. Ngón thứ hai chạm xuống thì hủy thao tác ngón đầu đang làm (vẽ, kéo hay đổi kích thước), và các ngón chỉ thu phóng cho tới khi nhấc hết tay. Thả tay ở gần mức vừa khung thì ảnh về lại mức đó. Khi đang phóng to, nút ở góc dưới bên phải (`BugScreenshotEditor.resetZoomButtonKey`) hiện mức zoom, chạm vào để về lại cả ảnh. `maxZoom: 1` tắt zoom. Nét khung, tay nắm và vùng chạm giữ nguyên kích thước trên màn hình ở mọi mức zoom.
 
-Editor giữ tỉ lệ ảnh và chiếm kích thước lớn nhất mà constraints cho phép. Nó nhận mọi thao tác chạm bắt đầu trên ảnh ngay khi chạm xuống, nên kéo trên ảnh không cuộn list chứa nó: đặt editor tương tác trong một trang riêng và dùng `readOnly: true` cho ảnh xem trước trong form có cuộn. Tọa độ khung là pixel của ảnh (`coordinateUnit: image_pixels`), cùng hệ với `BugScreenshot.toImageRect`. `toAnnotatedPng` vẽ mỗi khung với nét `strokeWidth * pixelRatio` pixel ảnh, nên ảnh xuất ra giống editor khi hiện ảnh bằng kích thước thật của app. Không có khung nào thì `toAnnotatedPng` trả về `pngBytes` mà không encode lại.
+Editor giữ tỉ lệ ảnh và chiếm kích thước lớn nhất mà constraints cho phép. Nó nhận mọi thao tác chạm bắt đầu trên ảnh ngay khi chạm xuống, nên kéo trên ảnh không cuộn list chứa nó: đặt editor tương tác trong một trang riêng và dùng `readOnly: true` cho ảnh xem trước trong form có cuộn. Tọa độ khung là pixel của ảnh (`coordinateUnit: image_pixels`), cùng hệ với `BugScreenshot.toImageRect`. `toAnnotatedPng` vẽ viền nét đứt của `highlight` (nếu truyền) ở dưới, rồi vẽ mỗi khung với nét `strokeWidth * pixelRatio` pixel ảnh, nên ảnh xuất ra giống editor khi hiện ảnh bằng kích thước thật của app. Không có khung nào, không có `highlight` và không có `statusBar` thì `toAnnotatedPng` trả về `pngBytes` mà không encode lại.
 
 ## Lưu ý
 

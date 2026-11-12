@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -105,6 +107,70 @@ void main() => qaBuildOnly(() {
         await pumpModeChange(tester);
         expect(modeOf(tester).state, InspectMode.disabled);
         expect(launcher, findsNothing);
+      });
+
+      testWidgets('the launcher hides while the report future runs',
+          (tester) async {
+        final reports = <Completer<void>>[];
+        await pumpHost(
+          tester,
+          home: Center(child: BugInspectable(id: 'a', child: box(50, 50))),
+          onWidgetSelected: (_, __) {
+            final report = Completer<void>();
+            reports.add(report);
+            return report.future;
+          },
+        );
+        expect(launcher, findsOneWidget);
+
+        await enable(tester);
+        await tapCenterOf(tester, inspectable('a'));
+        await pumpModeChange(tester);
+        expect(reports, hasLength(1));
+        expect(modeOf(tester).state, InspectMode.disabled);
+        // The report is open: no button above it.
+        expect(launcher, findsNothing);
+
+        // A QA menu can still enable the mode: the toolbar is the way out.
+        await enable(tester);
+        expect(exitButton, findsOneWidget);
+        await disable(tester);
+        expect(launcher, findsNothing);
+
+        reports.single.complete();
+        await pumpModeChange(tester);
+        expect(launcher, findsOneWidget);
+      });
+
+      testWidgets('a failed report shows the launcher and reports the error',
+          (tester) async {
+        final report = Completer<void>();
+        await pumpHost(
+          tester,
+          home: Center(child: BugInspectable(id: 'a', child: box(50, 50))),
+          onWidgetSelected: (_, __) => report.future,
+        );
+        await enable(tester);
+        await tapCenterOf(tester, inspectable('a'));
+        await pumpModeChange(tester);
+        expect(launcher, findsNothing);
+
+        report.completeError(StateError('form failed'));
+        await pumpModeChange(tester);
+        expect(tester.takeException(), isStateError);
+        expect(launcher, findsOneWidget);
+      });
+
+      testWidgets('a callback without a future keeps the launcher',
+          (tester) async {
+        await pumpHost(
+          tester,
+          home: Center(child: BugInspectable(id: 'a', child: box(50, 50))),
+        );
+        await enable(tester);
+        await tapCenterOf(tester, inspectable('a'));
+        await pumpModeChange(tester);
+        expect(launcher, findsOneWidget);
       });
 
       testWidgets('the position is shared by the launcher and the toolbar',
