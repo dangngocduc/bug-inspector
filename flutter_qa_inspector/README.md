@@ -1,20 +1,18 @@
 # flutter_qa_inspector
 
-Tester chọn một widget hoặc cả màn hình trên bản QA, package trả về thông tin widget/màn hình, state BLoC/Cubit và state của widget (`State` của `StatefulWidget`) tại thời điểm chọn, cùng timeline state gần nhất để đính kèm vào bug report. Package có sẵn form báo lỗi (`BugReportPage`): vẽ khung lên ảnh chụp, nhập mô tả, rồi chia sẻ ảnh + ZIP qua share sheet.
+A Flutter inspector for QA builds. Testers can select a widget or a whole screen and attach its metadata, explicit widget parameters, BLoC/Cubit state snapshots, a recent activity timeline, and an annotated screenshot to a bug report.
+
+The package includes `BugReportPage`: draw rectangles on a screenshot, describe the issue, then share the image and a ZIP through the platform share sheet. It does not automatically read fields from a widget's `State` or discover its BLoC dependencies; expose the data you need through the markers and scopes below.
+
+This README describes version `0.9.0` and the current public API.
+
+## Requirements and installation
 
 - Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`.
-- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `archive: ^4.0.0` (ZIP), `share_plus: >=12.0.0 <14.0.0` (share sheet).
-- Inspector chỉ bật khi build với `--dart-define=FLUTTER_QA_INSPECTOR=true`. Thiếu define hoặc `=false` thì tích hợp qua facade giữ nguyên app content, xem [Bản production](#bản-production).
+- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
+- The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`. Without the define, or with `false`, the facade returns the app content unchanged; see [Production builds](#production-builds). `enabled: true` cannot override the compile-time flag.
 
-## Luồng báo bug
-
-1. Tester tái hiện lỗi rồi bấm nút bug nổi trên cùng app (hoặc app gọi `BugInspector.maybeModeCubitOf(context)?.enable()` từ menu QA của mình).
-2. Mọi `BugInspectable` có viền hồng, mọi `BugInspectablePage` có viền xanh. App ngừng nhận pointer (tap, cuộn, hover).
-3. Nút bug nổi mở ra thành thanh công cụ nổi. Tester chạm vào một vùng có viền để chọn widget, hoặc bấm **Select screen** trên thanh công cụ để chọn cả màn hình hiện tại. Inspector đo bounds, đọc state BLoC/Cubit và state của widget, rồi lấy timeline. Chạm ra ngoài các widget thì giữ nguyên chế độ chọn.
-4. Inspector tắt chế độ chọn (mặc định) rồi gọi `onWidgetSelected(widgetContext, selection)`. Nút ✕ trên thanh công cụ cho phép hủy.
-5. Với tích hợp nhanh, callback này chụp màn hình và mở `BugReportPage`. Tester vẽ khung, nhập mô tả rồi bấm **Send** để chia sẻ ảnh và file ZIP.
-
-## Cài đặt
+This package declares `publish_to: none`. Add it from Git:
 
 ```yaml
 dependencies:
@@ -24,139 +22,171 @@ dependencies:
       path: flutter_qa_inspector
 ```
 
-App không cần tự khai báo `archive` hay `share_plus` nếu không dùng trực tiếp các package đó. `share_plus` là plugin, nên native code của nó vẫn có trong mọi bản build, kể cả production. Khi chỉ mở form qua `FlutterQaInspector`, nhánh mở form bị compiler bỏ khi không có define.
-
-Đối chiếu native toolchain với version `share_plus` được resolve trong lockfile:
-
-- `12.0.0`: iOS 12+, macOS 10.14+; Android cần Java 17, Kotlin 2.2.0, AGP 8.12.1+ và Gradle 8.13+.
-- `13.3.1`: Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; yêu cầu Android như trên. Range dependency cho phép resolver chọn bản phù hợp SDK, nhưng deployment target native vẫn cần kiểm tra riêng.
-- iOS: thêm `NSPhotoLibraryAddUsageDescription` vào `ios/Runner/Info.plist` nếu dùng share sheet mặc định để tester có thể chọn **Save Image**. Package không thể tự thêm khóa này vào host. Form đã truyền vị trí nút gửi cho popover trên iPad.
-- Linux không hỗ trợ chia sẻ file qua `share_plus`; dùng `share:` riêng để gửi ZIP. Trên web, share file phụ thuộc browser và có thể chuyển sang download.
-
-Yêu cầu theo từng version: [share_plus 12.0.0](https://pub.dev/packages/share_plus/versions/12.0.0), [share_plus 13.3.1](https://pub.dev/packages/share_plus/versions/13.3.1).
-
-## Tích hợp nhanh
-
-Ba chỗ, không cần thêm file nào trong app:
+For a local checkout, use `path: ../flutter_qa_inspector` instead, adjusted relative to the host app's `pubspec.yaml`. Import the public entrypoint:
 
 ```dart
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
+```
+
+You do not need to declare `archive` or `share_plus` separately unless your app imports them directly. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
+
+Check the `share_plus` version resolved in your lockfile against the host's native toolchain:
+
+| Version | Requirements |
+| --- | --- |
+| `12.0.0` | iOS 12+, macOS 10.14+; Android: Java 17, Kotlin 2.2.0, AGP 8.12.1+, Gradle 8.13+. |
+| `13.3.1` | Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; the same Android requirements as above. |
+
+Dependency resolution checks SDK constraints but does not update native deployment targets. For other versions in the allowed range, check that version's requirements. See the upstream documentation for [share_plus 12.0.0](https://pub.dev/packages/share_plus/versions/12.0.0) and [13.3.1](https://pub.dev/packages/share_plus/versions/13.3.1).
+
+- On iOS, add `NSPhotoLibraryAddUsageDescription` to `ios/Runner/Info.plist` when using the default share sheet so testers can choose **Save Image**. The package cannot add this key to the host app. The report already supplies the send button's position for the iPad share popover.
+- Linux does not support file sharing through `share_plus`; provide a custom `share:` callback to send the ZIP. On the web, file sharing depends on the browser and may fall back to a download.
+
+## Bug reporting workflow
+
+1. Reproduce the issue, then tap the floating bug button. An existing QA menu can also call `BugInspector.maybeModeCubitOf(context)?.enable()`.
+2. `BugInspectable` widgets receive pink borders and `BugInspectablePage` screens receive blue borders. The app content stops receiving pointer input, including taps, scrolling, and hover events.
+3. Tap a highlighted widget, or use **Select screen** on the floating toolbar to select the current screen. The inspector measures bounds, captures declared widget parameters and BLoC/Cubit snapshots, and reads the recent timeline. A tap outside all widget markers keeps selection mode active by default.
+4. The inspector disables selection mode by default, then calls `onWidgetSelected(widgetContext, selection)`. Use the toolbar's close button to cancel selection instead.
+5. With the quick setup, the callback captures the app and opens `BugReportPage`. Annotate the image, enter a description, and tap **Send** to share the PNG and ZIP.
+
+The snapshot records the moment of selection. The screenshot may be captured in a later frame; neither is a recording of the entire reproduction flow.
+
+## Quick setup
+
+Install the observer before creating any BLoC/Cubit, add the host to the app builder, and mark the screens or widgets testers should be able to select. This minimal app uses the built-in report flow:
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
 void main() {
-  // Trước khi tạo BLoC/Cubit nào. Giữ observer sẵn có của app.
+  // Keeps the app's existing Bloc.observer.
   FlutterQaInspector.install();
   runApp(const App());
 }
 
-MaterialApp(
-  // Hoặc, khi builder còn bọc widget khác:
-  // builder: (context, child) => FlutterQaInspector.wrap(child: child!),
-  builder: FlutterQaInspector.builder,
-  onGenerateRoute: (settings) => MaterialPageRoute<void>(
-    settings: settings,
-    // Mỗi route là một màn hình chọn được, id = tên route.
-    builder: (_) => BugInspectablePage.route(
-      settings: settings,
-      sourceFile: 'lib/app_navigator.dart',
-      child: pageFor(settings),
-    ),
+class App extends StatelessWidget {
+  const App({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        builder: FlutterQaInspector.builder,
+        home: const BugInspectablePage(
+          id: 'home',
+          sourceFile: 'lib/main.dart',
+          child: Scaffold(
+            body: Center(
+              child: BugInspectable(
+                id: 'home.message',
+                child: Text('QA example'),
+              ),
+            ),
+          ),
+        ),
+      );
+}
+```
+
+For an existing app, preserve its bootstrap, Navigator/Router, theme, localization, providers, and callbacks. Compose the inspector into the existing builder and pass its `child` through. For example, inside that builder:
+
+```dart
+return FlutterQaInspector.wrap(
+  child: child ?? const SizedBox.shrink(),
+);
+```
+
+`MaterialApp.router` supports the same builder pattern; keep your existing `routerConfig`.
+
+- `FlutterQaInspector.install({stateRecorder})` installs a `MultiBlocObserver` combining the existing observer with `BugInspectorBlocObserver`. Later calls do nothing. `FlutterQaInspector.recorder` exposes the installed recorder. Without the define, installation does nothing and the recorder is `null`.
+- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)` hosts the inspector, captures a screenshot, and opens the report on the root navigator for each selection. It uses the installed recorder unless you supply one. Without the define, it returns `child` directly.
+- `FlutterQaInspector.builder` is `wrap` with default options. Set `captureScreenshot: false` on `wrap` for reports without an image.
+
+Run the app or build a QA artifact with the same flag:
+
+```sh
+flutter pub get
+flutter run --dart-define=FLUTTER_QA_INSPECTOR=true
+flutter build ipa --dart-define=FLUTTER_QA_INSPECTOR=true
+```
+
+The IPA command applies to an app with an iOS target. Keep your existing flavor, entrypoint, and Flutter/FVM runner. Changing the compile-time define requires running or building the app again; hot reload does not change it. Use this define in QA CI builds, and omit it from production builds.
+
+### Display strings
+
+`BugReportStrings` covers the toolbar, report form, and annotation editor. `BugReportStrings.of(context)` selects `.vi` for a Vietnamese locale and `.en` otherwise. Map your app's localization into `strings:`; for example, inside an existing builder where `S` is your localization class:
+
+```dart
+return FlutterQaInspector.wrap(
+  child: child ?? const SizedBox.shrink(),
+  strings: (context) => BugReportStrings.en.copyWith(
+    title: S.of(context).bugReportTitle,
   ),
 );
 ```
 
-Sau đó đánh dấu widget bằng `BugInspectable`, gắn state bằng `BugBlocScope` và params của widget bằng `BugInspectableWidget` như phần dưới.
+### Custom delivery
 
-- `FlutterQaInspector.install({stateRecorder})`: cài `MultiBlocObserver(Bloc.observer cũ + BugInspectorBlocObserver)` một lần; `FlutterQaInspector.recorder` là recorder đó. Thiếu define thì không làm gì.
-- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)`: dựng `BugInspector` (recorder mặc định là `FlutterQaInspector.recorder`), mỗi lần chọn thì chụp màn hình rồi mở `BugReportPage` trên root navigator. Thiếu define thì trả nguyên `child`.
-- `BugInspectablePage.route(settings:, child:, sourceFile:)`: `id` và `label` là `settings.name`, route không tên có id `unnamed_route` (`BugInspectablePage.unnamedRouteId`).
+By default, **Send** calls `SharePlus.instance.share`. Supply `share:` to upload the report or create a ticket. The callback receives `ShareParams` with the PNG (when available), ZIP, and the trimmed description as `text`, and returns a `ShareResult`.
 
-### Chuỗi hiển thị
+`ShareResultStatus.dismissed` keeps the form open for another attempt; other statuses close it. Throwing an error displays a dialog. The package re-exports `ShareParams`, `ShareResult`, `ShareResultStatus`, and `XFile`, so the callback can use them through the public entrypoint. The package does not provide an upload service or issue tracker integration.
 
-`BugReportStrings` gồm chuỗi của thanh công cụ (`selectionHint`, `pageButtonLabel`), form và trang vẽ. Package có `BugReportStrings.en` và `.vi`; mặc định `BugReportStrings.of(context)` chọn `vi` khi `Localizations` là tiếng Việt, còn lại là `en`. App có l10n riêng truyền vào:
+### Report form and ZIP
 
-```dart
-FlutterQaInspector.wrap(
-  child: child!,
-  strings: (context) => BugReportStrings.en.copyWith(
-    title: S.of(context).bugReportTitle,
-  ),
-)
-```
+`BugReportPage` is a full-screen Cupertino report with its own theme, following the device's light/dark mode. It opens on the root navigator and has an internal navigator for the editor, so the app sees one report route: `BugReportPage.routeName`, `/qa-bug-report`.
 
-### Gửi report đi nơi khác
+Back closes the editor before the form. Leaving a form with a description or annotations asks for confirmation. Sending creates a `BugReportBundle`:
 
-Mặc định **Send** gọi `SharePlus.instance.share`. Truyền `share:` để upload hoặc tạo ticket: hàm nhận `ShareParams` (`files` gồm PNG và ZIP, `text` là mô tả) và trả `ShareResult`. `ShareResultStatus.dismissed` giữ form mở để gửi lại, trạng thái khác đóng form, lỗi ném ra hiện dialog. `ShareParams`, `ShareResult`, `ShareResultStatus`, `XFile` được export lại nên app không cần import `share_plus`.
-
-### Form báo lỗi và file ZIP
-
-`BugReportPage` (style Cupertino, theme riêng, theo sáng/tối của máy) mở full-screen trên root navigator, có `Navigator` riêng nên Navigator của app chỉ thấy một route (`BugReportPage.routeName`, `/qa-bug-report`). Back đóng trang vẽ trước rồi mới tới form; form có mô tả hoặc khung thì hỏi trước khi bỏ. Gửi tạo `BugReportBundle`:
-
-| File | Nội dung |
+| ZIP entry | Contents |
 | --- | --- |
-| `screenshot.png` | Ảnh đã vẽ viền widget được chọn (không viền khi chọn màn hình) và các khung của tester. Chỉ có khi có ảnh chụp. |
-| `description.txt` | Mô tả tester nhập, giữ nguyên. |
-| `inspector.json` | `{"inspector": selection.toJson(), "screenshot": {...screenshot.toJson(), "annotations": [...]}}`; `screenshot` chỉ có khi có ảnh. |
+| `screenshot.png` | Optional. The screenshot with the selected widget's highlight and the tester's rectangles. Whole-screen selections do not receive a highlight around the page. |
+| `description.txt` | The tester's description, preserved as entered. May be empty. |
+| `inspector.json` | `{"inspector": selection.toJson(), "screenshot": {...screenshot.toJson(), "annotations": [...]}}`. The `screenshot` object is present only when an image is available; it contains metadata, not PNG bytes. |
 
-Tên file là `BugReportBundle.nameFor(selection.id, selection.capturedAtUtc)`, ví dụ `bug_counter.increment_20261112_093005`, share kèm `<name>.png` và `<name>.zip`. Nút **Copy JSON** chép `{"description": ..., ...inspector.json}`. Có thể mở form từ callback của riêng app bằng `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)`.
+`BugReportBundle.nameFor(selection.id, selection.capturedAtUtc)` generates a name such as `bug_counter.increment_20261112_093005`, using a sanitized ID and the UTC selection time. The share sheet receives `<name>.png` when available and `<name>.zip`. **Copy JSON** copies `{"description": ..., ...inspector.json}`; this additional description field is not written to `inspector.json` in the ZIP.
 
-## Tích hợp tùy chỉnh
+A custom callback can reuse the form with `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)`. Capture the screenshot before opening the form. The bundle does not automatically include app version, build number, Git SHA, or device details; add those in a custom flow if needed.
 
-Khi app cần form hoặc luồng gửi riêng, dùng trực tiếp `BugInspector` và tự xử lý `onWidgetSelected`:
+## Mark widgets and capture state
 
-```dart
-void main() {
-  BugStateRecorder? recorder;
-  // Hằng số: bản build không có define sẽ bỏ hẳn nhánh này.
-  if (BugInspector.enabledFromEnvironment) {
-    // Cài observer trước khi tạo BLoC/Cubit và giữ observer sẵn có của app.
-    recorder = BugStateRecorder();
-    Bloc.observer = MultiBlocObserver(
-      observers: [Bloc.observer, BugInspectorBlocObserver(recorder: recorder)],
-    );
-  }
+The following snippets assume an enabled host and existing app models, providers, and actions. Add `package:flutter/material.dart` and `package:flutter_bloc/flutter_bloc.dart` imports where used.
 
-  runApp(
-    MaterialApp(
-      // Không cần if: thiếu define thì BugInspector chỉ trả về child.
-      builder: (context, child) => BugInspector(
-        stateRecorder: recorder,
-        // Trả về Future của route báo lỗi: nút bug nổi ẩn cho đến khi
-        // Future hoàn tất, nên không che form.
-        onWidgetSelected: (widgetContext, selection) {
-          // Mở form báo lỗi với selection.toJson().
-          return Navigator.of(widgetContext).push(/* route báo lỗi */);
-        },
-        // Giữ child của builder để Navigator/Router tiếp tục hoạt động.
-        child: child ?? const SizedBox.shrink(),
-      ),
-      home: const HomePage(),
-    ),
-  );
-}
-```
+### BLoC/Cubit snapshots
 
-Đánh dấu widget và gắn state:
+Place a scope below the instance's provider and above the widget marker. Reuse the app's instance:
 
 ```dart
 BugBlocScope<CartState>.lazy(
   id: 'cart_cubit',
-  // Chỉ chạy khi tester chọn widget, không chạy lúc build.
+  // Runs when selected, not during build.
   readBloc: (context) => context.read<CartCubit>(),
   snapshotBuilder: (state) => {
-    'status': state.status.name,          // enum -> .name
+    'status': state.status.name,
     'itemCount': state.items.length,
-    'updatedAt': state.updatedAt?.toIso8601String(), // DateTime -> ISO
+    'updatedAt': state.updatedAt?.toIso8601String(),
   },
   child: BugInspectable(
     id: 'cart.checkout',
     sourceFile: 'lib/cart/cart_page.dart',
-    sourceLine: 42,
-    child: FilledButton(onPressed: checkout, child: const Text('Thanh toán')),
+    child: FilledButton(
+      onPressed: checkout,
+      child: const Text('Checkout'),
+    ),
   ),
 )
 ```
 
-Lấy params của widget được chọn: selection mô tả `child` của marker. `widgetType` là runtime type của `child`, `widgetState` là params của chính `child` đó. Dart không có reflection để tự đọc field, còn Diagnostics (`debugFillProperties`) chỉ có dữ liệu ở debug build, nên class widget của `child` khai báo params cần đưa vào bug report qua mixin `BugInspectableWidget`:
+Use the state type for `BugBlocScope<S>`, not the Cubit/Bloc type. The lazy reader receives the scope's context. It can instantiate a previously unused lazy provider at selection time. `BugBlocScope(bloc: ...)` is also available, but its argument expression runs during build, including production builds.
+
+Widget selection collects ancestor scopes, nearest first, and deduplicates them by instance identity. Two different instances of the same class are kept. A scope inside the marker's child is not included for a widget selection. Declared scopes do not prove which instances the child actually consumes; check its `BlocBuilder`, `BlocSelector`, or `context.read<T>()` when diagnosing an issue.
+
+`snapshotBuilder` and the widget's `bugSnapshot()` must be synchronous, must not change state, and must return JSON-compatible data: strings, finite numbers, booleans, `null`, lists, and maps with string keys. Convert enums with `.name`, dates with `.toIso8601String()`, and sets to lists. Check nested values too, and omit passwords, tokens, and personal data.
+
+If reading a scope or serializing its state fails, its snapshot has `state: {}` and `captureErrorType`; other scopes are still captured. A failed lazy read also sets `type` and `instanceId` to `unknown`.
+
+### Parameters of the selected widget
+
+`widgetType` and `widgetState` describe the marker's direct `child`. To expose its parameters, add `BugInspectableWidget` to that widget class:
 
 ```dart
 class ProductCard extends StatelessWidget with BugInspectableWidget {
@@ -171,190 +201,164 @@ class ProductCard extends StatelessWidget with BugInspectableWidget {
   final bool inStock;
   final VoidCallback? onAddToCart;
 
-  // Chỉ chạy khi tester chọn widget hoặc màn hình.
   @override
   Map<String, Object?> bugSnapshot() => {
         'productId': productId,
         'inStock': inStock,
-        'canAddToCart': onAddToCart != null, // callback -> có hay không
+        'canAddToCart': onAddToCart != null,
       };
 
-  // build như bình thường.
+  @override
+  Widget build(BuildContext context) => ListTile(
+        title: Text(productId),
+        onTap: inStock ? onAddToCart : null,
+      );
 }
 
-BugInspectable(
-  id: 'catalog.product',
-  child: ProductCard(productId: product.id, inStock: product.inStock),
-)
-// selection.widgetType == 'ProductCard'
-// selection.widgetState == {'productId': 'p1', 'inStock': true, 'canAddToCart': false}
+Widget inspectedProduct() => const BugInspectable(
+      id: 'catalog.product',
+      child: ProductCard(productId: 'p1', inStock: true),
+    );
+// widgetType: ProductCard
+// widgetState: {productId: p1, inStock: true, canAddToCart: false}
 ```
 
-- Chỉ đọc đúng `child` của `BugInspectable`/`BugInspectablePage`: đặt marker sát quanh widget có mixin. Widget có mixin nằm sâu hơn bên trong `child` (ví dụ `BugInspectable(child: Padding(child: ProductCard(...)))`) hoặc phía trên marker không được đọc; khi đó `widgetType` là `Padding` và `widgetState` là `{}`.
-- `child` không dùng mixin, kể cả widget của Flutter như `Text` hay `FilledButton`, cho `widgetState: {}`.
-- Mixin dùng được cho `StatelessWidget` và `StatefulWidget`, nhưng đọc params của widget (giá trị parent truyền vào), không đọc field của `State`. Giá trị là params tại lúc chọn, sau lần build gần nhất.
+- Put the marker directly around the widget with the mixin. `BugInspectable(child: Padding(child: ProductCard(...)))` describes `Padding` and produces `widgetState: {}`. Widgets deeper inside the child or above the marker are not read.
+- A child without the mixin, including Flutter widgets such as `Text` or `FilledButton`, produces `widgetState: {}`.
+- The mixin works on `StatelessWidget` and `StatefulWidget`. It reads widget parameters from the latest build, not fields of `State`, controllers, or the whole subtree. Local state must be passed as parameters to the marked child or exposed through a BLoC/Cubit scope to appear in the report.
+- `bugSnapshot()` runs synchronously at selection time and follows the same JSON rules as `snapshotBuilder`. Failure produces `widgetState: {}` and `widgetStateCaptureErrorType`, while BLoC snapshots and history are still collected.
+- From `0.9.0`, `BugInspectableState` and the `widgetStates` list have been removed. Use `BugInspectableWidget` and the `widgetState` object; the new object has different semantics from the old `State` snapshots.
 
-Đánh dấu màn hình, trong page widget hoặc ngay trong route builder:
+## Mark and select screens
+
+Wrap a page in its route builder or mark the page's root widget:
 
 ```dart
-MaterialPageRoute<void>(
-  settings: const RouteSettings(name: '/catalog'),
-  builder: (_) => const BugInspectablePage(
-    id: 'catalog',
-    label: 'Danh mục',
-    sourceFile: 'lib/catalog/catalog_page.dart',
-    child: CatalogPage(),
-  ),
-)
+Route<void> catalogRoute() => MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/catalog'),
+      builder: (_) => const BugInspectablePage(
+        id: 'catalog',
+        label: 'Catalog',
+        sourceFile: 'lib/catalog/catalog_page.dart',
+        child: CatalogPage(),
+      ),
+    );
 ```
 
-Với go_router: `builder: (context, state) => BugInspectablePage(id: 'catalog', child: CatalogPage())`.
+For named routes created by `onGenerateRoute`, use `BugInspectablePage.route` once at the navigation boundary. In this fragment, `pageFor(settings)` is the host app's existing page factory:
 
-App không cần thêm nút Inspect vào UI: `BugInspector` tự vẽ một nút bug nổi (xem [Widget nổi](#widget-nổi)). Nếu app đã có menu QA riêng, đặt `showLauncher: false` và gọi:
+```dart
+Route<void> onGenerateRoute(RouteSettings settings) => MaterialPageRoute<void>(
+      settings: settings,
+      builder: (_) => BugInspectablePage.route(
+        settings: settings,
+        sourceFile: 'lib/app_navigator.dart',
+        child: pageFor(settings),
+      ),
+    );
+```
+
+The route factory uses `settings.name` for both `id` and `label`. Unnamed routes use `BugInspectablePage.unnamedRouteId` (`unnamed_route`). Use the regular constructor when you need a different stable ID. With `go_router`, return `BugInspectablePage(id: 'catalog', child: CatalogPage())` from the existing route builder; preserve its routing and providers.
+
+- The current screen is the topmost painted page marker. Offstage routes and hidden `IndexedStack` tabs are excluded. A nested page, such as a tab inside a shell, takes precedence over its containing page. Dialogs and bottom sheets do not automatically become pages.
+- **Select screen** shows the target's `label` or `id`. It appears one frame after the marker is painted and is hidden when no page is available.
+- Page snapshots collect descendant scopes in tree order, then ancestor scopes nearest first, deduplicated by instance. A marker at the route boundary can therefore capture scopes created inside the page.
+- `bounds` describes the page, `widgetType` describes its direct child, and `widgetState` contains that child's declared parameters. `routeName` comes from the containing route's `RouteSettings.name`, independently of the marker ID.
+
+A page marker does not make every child individually selectable. Add `BugInspectable` to each control that needs its own selection.
+
+## Custom inspector host
+
+Use `BugInspector` directly when you need your own form or reporting flow. Its required arguments are `child` and `onWidgetSelected`. Install the observer before creating app instances and pass the same recorder to the host:
+
+```dart
+BugStateRecorder? installQaTimeline() {
+  if (!BugInspector.enabledFromEnvironment) return null;
+  final recorder = BugStateRecorder();
+  Bloc.observer = MultiBlocObserver(
+    observers: [Bloc.observer, BugInspectorBlocObserver(recorder: recorder)],
+  );
+  return recorder;
+}
+
+Widget withQaInspector({
+  required Widget child,
+  required BugStateRecorder? recorder,
+  required BugWidgetSelectedCallback openReport,
+}) =>
+    BugInspector(
+      stateRecorder: recorder,
+      onWidgetSelected: openReport,
+      child: child,
+    );
+```
+
+This fragment uses `Bloc` and `MultiBlocObserver` from `package:bloc/bloc.dart`. If your app imports that package directly, declare `bloc: ^9.2.0` in its dependencies. Call `installQaTimeline()` once during startup, then call `withQaInspector` from the app builder with its original child and your callback. Do not create the recorder in `build`.
+
+The callback receives the selected marker's context. Use it immediately to find the relevant navigator; after `await`, check `widgetContext.mounted`. Return or await the report route's future so the launcher stays hidden until the report closes. A callback that returns immediately can leave the launcher over the report.
+
+A recorder is optional: without it, state snapshots still work and `stateHistory` is empty.
+
+### Existing QA menu
+
+The default host includes a draggable launcher. With a custom `BugInspector`, set `showLauncher: false` if your app has its own entry point, and call this from a context below the host:
 
 ```dart
 BugInspector.maybeModeCubitOf(context)?.enable();
 ```
 
-`maybeModeCubitOf` trả về `null` trên bản production, tiện để ẩn mục menu. Đừng dùng `context.read<InspectModeCubit>()`: trên bản production không có Cubit nên lệnh này ném lỗi.
+The accessor returns `null` without an enabled host, including production builds. Use it to hide the QA menu entry when unavailable. `context.read<InspectModeCubit>()` throws in production because that Cubit is not provided there.
 
-Chạy bản QA:
+### Host options
 
-```sh
-flutter run --dart-define=FLUTTER_QA_INSPECTOR=true
-flutter build ipa --dart-define=FLUTTER_QA_INSPECTOR=true   # bản QA/TestFlight
-```
-
-## Bản production
-
-Define `FLUTTER_QA_INSPECTOR` là công tắc chính của package, đọc qua hằng số `BugInspector.enabledFromEnvironment`. Thiếu define hoặc `--dart-define=FLUTTER_QA_INSPECTOR=false` thì package không ảnh hưởng tới app, kể cả khi code tích hợp vẫn nằm nguyên trong app:
-
-| Thành phần | Khi không có define |
-| --- | --- |
-| `FlutterQaInspector` | `install` không đổi `Bloc.observer`, `recorder` là `null`; `wrap`/`builder` trả về chính `child`. |
-| `BugInspector` | Chỉ trả về `child`, bất kể `enabled`. Không có nút nổi, không có lớp nào bọc app, không tạo `InspectModeCubit`. |
-| `BugInspectable`, `BugInspectablePage`, `BugInspectablePage.route` | Chỉ trả về `child`. Không đăng ký, không có render object hay `GlobalKey`. |
-| `BugBlocScope.lazy` | Chỉ trả về `child`, không bao giờ gọi `readBloc`. |
-| `BugInspectableWidget` | Mixin không override method nào của widget, nên widget build như khi không có mixin. `bugSnapshot` không bao giờ được gọi. |
-| `BugInspectorBlocObserver` | Không ghi gì, kể cả khi app vẫn cài nó vào `Bloc.observer`. |
-| `maybeModeCubitOf`, `captureScreenshot` | Trả về `null`. |
-| `BugScreenshotEditor` | Dựng một hộp rỗng. |
-| `BugScreenshot.toAnnotatedPng` | Trả về `pngBytes` nguyên vẹn. |
-
-Vì là hằng số, compiler có thể bỏ nhánh inspector và form không được gọi. Các số đo Android arm64 trước `0.8.0` (0,9 KB khi thiếu define, 46 KB khi có define trong `libapp.so` của example) là baseline cũ, chưa đo lại sau khi đưa report và plugin vào package; không dùng chúng làm kích thước binary của bản hiện tại.
-
-Cái còn lại trên bản production: mỗi `BugInspectable`, `BugInspectablePage`, `BugBlocScope` và `BugInspector` thêm một element không có render object, nên layout, paint, hit test và semantics giữ nguyên. `test/production_build_test.dart` kiểm tra điều này: một app tích hợp đầy đủ có cùng render tree và semantics tree với app không dùng package.
-
-Các phần không được compile-time gate tự động:
-
-- Biểu thức truyền vào `BugBlocScope(bloc: ...)` vẫn chạy mỗi lần build. Ví dụ `context.read<T>()` sẽ tạo provider lazy sớm hơn. Dùng `BugBlocScope.lazy`.
-- Code QA của app như `BugStateRecorder()`, `MultiBlocObserver`, form báo lỗi riêng hay `InspectModeCubit` tự tạo. Đặt chúng trong `if (BugInspector.enabledFromEnvironment)` để compiler bỏ đi. `FlutterQaInspector` đã tự làm việc này.
-- Native code của plugin `share_plus` (dependency của package).
-- `BugReportPage` và `BugReportBundle` nếu app chủ động gọi trực tiếp: chúng vẫn dựng form/đóng gói report khi thiếu define. Đặt lối mở riêng trong nhánh `BugInspector.enabledFromEnvironment`; facade đã có gate này.
-- `context.read<InspectModeCubit>()` ném lỗi trên bản production. Dùng `BugInspector.maybeModeCubitOf(context)`.
-
-Checklist trước khi phát hành:
-
-1. Lệnh build production và CI không truyền `--dart-define=FLUTTER_QA_INSPECTOR=true`.
-2. Observer và recorder chỉ được tạo qua `FlutterQaInspector.install()` hoặc trong nhánh `if (BugInspector.enabledFromEnvironment)`.
-3. Dùng `BugBlocScope.lazy` thay cho `BugBlocScope(bloc: context.read<T>())`.
-
-Trên bản QA, `enabled: false` tắt inspector giống như khi không có define, ví dụ cho một flavor. Quyết định giá trị này trước `runApp`: đổi nó lúc app đang chạy sẽ dựng lại nội dung app, mất route stack và state màn hình. Để ẩn công cụ lúc đang chạy, dùng `showLauncher` và `InspectModeCubit`.
-
-## API
-
-| Thành phần | Trách nhiệm |
-| --- | --- |
-| `FlutterQaInspector` | Tích hợp nhanh: `install()`, `wrap()`, `builder`, `recorder`. |
-| `BugReportPage` | Form báo lỗi có sẵn: target, ảnh chụp + trang vẽ, mô tả, JSON, gửi qua `share`. `open()` push lên root navigator. |
-| `BugReportBundle`, `BugReportShare` | ZIP `screenshot.png` + `description.txt` + `inspector.json`, `nameFor`, `toZip()`, `toShareParams()`. |
-| `BugReportStrings` | Chuỗi của thanh công cụ, form và trang vẽ: `en`, `vi`, `of(context)`, `copyWith`. |
-| `InspectModeCubit` | `InspectMode.disabled` / `InspectMode.selecting` qua `enable()`, `disable()`, `toggle()`. Gọi sau `close()` không ném lỗi. |
-| `BugInspector` | Cung cấp Cubit, giữ registry riêng cho subtree, vẽ widget nổi và lớp chọn, gọi callback khi chọn. `BugInspector.enabledFromEnvironment` là công tắc chính. |
-| `BugInspectable` | Đăng ký widget theo `id`, vẽ viền khi đang chọn. Có `label`, `sourceFile`, `sourceLine`, `borderColor`, `borderWidth`. Không có define hoặc ngoài host thì chỉ trả về `child`. |
-| `BugInspectablePage` | Đánh dấu cả màn hình. Cùng tham số như `BugInspectable`, viền riêng và được chọn bằng nút **Select screen**. `BugInspectablePage.route(settings:)` lấy `id`/`label` từ tên route. |
-| `BugBlocScope<S>`, `BugBlocScope<S>.lazy` | Gắn instance BLoC/Cubit và `snapshotBuilder` vào subtree. Bản `.lazy` chỉ đọc instance qua `readBloc` khi tester chọn widget. |
-| `BugInspectableWidget` | Mixin cho class widget làm `child` của marker. `bugSnapshot()` trả về params của widget dưới dạng JSON object, lưu vào `selection.widgetState`, chỉ được gọi khi tester chọn widget. |
-| `BugStateRecorder` | Queue trong bộ nhớ, mặc định 300 bản ghi, bỏ bản ghi cũ nhất khi đầy. |
-| `BugInspectorBlocObserver` | Ghi `created`, `closed`, `error` (BLoC và Cubit), `event`, `transition` (BLoC), `change` (Cubit). Bỏ qua `InspectModeCubit`; có `filter` tùy chọn. Lỗi khi ghi (ví dụ `filter` ném lỗi) bị bỏ qua, không lan sang `emit`/`add` của app. |
-| `BugWidgetSelection`, `BugBlocSnapshot`, `BugStateRecord` | Dữ liệu trả về, có `toJson()`. `BugWidgetSelection.kind` là `widget` hoặc `page`; `widgetType` và `widgetState` mô tả `child` của marker. |
-| `BugInspector.captureScreenshot` / `BugScreenshot` | Chụp PNG nội dung app (không gồm widget nổi và các lớp của inspector) và đổi bounds sang tọa độ ảnh. |
-| `BugScreenshotEditor` | Hiện ảnh chụp và cho tester vẽ, chọn, kéo, đổi kích thước và xóa các khung chữ nhật, và phóng to ảnh bằng hai ngón tay. `readOnly: true` chỉ hiện ảnh và các khung. |
-| `BugScreenshotAnnotationController`, `BugScreenshotAnnotation` | Giữ danh sách khung (tọa độ pixel của ảnh) và khung đang chọn. `toJson()` cho payload. |
-| `BugScreenshot.toAnnotatedPng` | Vẽ lên ảnh những gì editor hiện (status bar giả, viền `highlight` và các khung) và trả về PNG mới để đính kèm. |
-| `BugStatusBar`, `BugStatusBarStyle` | Status bar giả phủ vùng safe area phía trên của ảnh: kiểu Pixel 8 (`android`) hoặc Dynamic Island (`iOS`). |
-| `BugInspector.launcherKey`, `exitButtonKey`, `pageButtonKey` | Key của các nút trên widget nổi, dùng cho widget test và integration test. |
-
-Tham số chính của `BugInspector`:
-
-| Tham số | Mặc định | Ghi chú |
+| Option | Default | Behavior |
 | --- | --- | --- |
-| `enabled` | `true` | Chỉ có tác dụng khi có define. `false` tắt inspector trên bản QA. Không đổi lúc app đang chạy. |
-| `modeCubit` | `null` | `null`: host tự tạo và `close()` Cubit. Truyền vào: app sở hữu và tự `close()`. |
-| `stateRecorder` | `null` | Dùng chung instance với `BugInspectorBlocObserver`. |
-| `historyWindow` | 30 giây | Cửa sổ thời gian của `stateHistory`. |
-| `disableModeOnSelection` | `true` | Nếu `false`, tự tắt mode trước khi mở form trong Navigator bên dưới overlay. |
-| `selectionTrigger` | `tapUp` | `tapUp` chỉ chọn khi Flutter đã xác nhận tap (kéo không chọn). `tapDown` chọn ngay khi chạm xuống. |
-| `showLauncher` | `true` | Hiện nút bug nổi khi mode đang tắt. Đặt `false` nếu app bật mode từ menu QA riêng. Thanh công cụ nổi luôn hiện khi đang chọn. Nút cũng ẩn trong lúc `Future` mà `onWidgetSelected` trả về chưa hoàn tất (form báo lỗi đang mở). |
-| `floatingAlignment` | giữa cạnh cuối | Vị trí ban đầu của widget nổi, trong safe area. |
-| `selectionHint` | `Tap a highlighted widget` | Dòng hướng dẫn trên thanh công cụ. |
-| `borderColor`, `borderWidth` | `#FF2D78`, 2 | Giá trị mặc định cho mọi `BugInspectable` bên dưới. |
-| `showPageButton`, `pageButtonLabel` | hiện, `Select screen` | Nút chọn màn hình trên thanh công cụ. Chỉ hiện khi có `BugInspectablePage` trên màn hình. |
-| `selectPageOnEmptyTap` | `false` | Nếu `true`, chạm ra ngoài mọi widget sẽ chọn màn hình chứa điểm chạm. |
-| `pageBorderColor`, `pageBorderWidth` | `#2979FF`, 4 | Giá trị mặc định cho mọi `BugInspectablePage` bên dưới. |
+| `enabled` | `true` | Still requires the compile-time flag. Keep this value stable for the app's lifetime. |
+| `modeCubit` | `null` | The host creates and closes its own Cubit. When supplied, the caller owns and closes it. |
+| `stateRecorder` | `null` | Use the same instance as the observer. |
+| `historyWindow` | 30 seconds | Time window included in `stateHistory`. |
+| `disableModeOnSelection` | `true` | If `false`, disable mode before capturing or opening a form below the overlay. |
+| `selectionTrigger` | `BugSelectionTrigger.tapUp` | Selects after a confirmed tap. `tapDown` selects immediately, even before a drag. |
+| `showLauncher` | `true` | Shows the bug button while mode is disabled. The selection toolbar always appears while selecting. The launcher hides while the callback's future is pending. |
+| `floatingAlignment` | `AlignmentDirectional.centerEnd` | Initial position inside the safe area. |
+| `selectionHint` | `Tap a highlighted widget` | Toolbar hint. |
+| `borderColor`, `borderWidth` | `#FF2D78`, 2 | Defaults for widget markers. |
+| `showPageButton`, `pageButtonLabel` | `true`, `Select screen` | Page button, visible only when a marked screen is available. |
+| `selectPageOnEmptyTap` | `false` | When enabled, a tap outside all widget markers selects the page under the tap. |
+| `pageBorderColor`, `pageBorderWidth` | `#2979FF`, 4 | Defaults for page markers. |
 
-## Quy tắc chọn widget
+Changing `enabled` at runtime rebuilds app content and loses its route stack and screen state. Decide it before `runApp`; use `InspectModeCubit` and `showLauncher` for runtime control. `InspectModeCubit` supports `enable()`, `disable()`, and `toggle()`; calls after `close()` are ignored.
 
-Tại thời điểm chạm, inspector đo `RenderBox` đã layout và còn attached của mỗi `BugInspectable`, đổi `Offset.zero & size` sang tọa độ global qua `getTransformTo(null)` rồi lọc ứng viên:
+## Selection rules and floating controls
 
-1. Bỏ widget không được vẽ trong frame hiện tại: route offstage, con ẩn của `IndexedStack`, `Offstage`, `Opacity` 0.
-2. Bỏ phần bị clip bởi ancestor (ví dụ item list đã cuộn ra dưới header). Ứng viên phải chứa điểm chạm trong phần còn nhìn thấy.
-3. Ưu tiên widget mà hit test tại điểm chạm chạm tới được. Widget bị dialog, bottom sheet hoặc widget khác che chỉ được chọn khi không còn ứng viên nào khác. Widget nằm dưới `IgnorePointer`/`AbsorbPointer` của app vẫn được tính là chạm tới được.
-4. Trong cùng mức ưu tiên, chọn diện tích bounds nhỏ nhất. Bằng diện tích thì ưu tiên widget sâu hơn trong tree.
+At tap time, the inspector measures each attached, laid-out marker's `RenderBox` and converts its bounds to global logical pixels:
 
-Các bước 1–3 khắc phục giới hạn của v0.1.0 (widget bị che, bị clip hoặc thuộc route offstage vẫn lọt vào tập ứng viên).
+1. Exclude widgets not painted in the current frame, such as offstage routes, hidden `IndexedStack` children, `Offstage`, and zero-opacity content.
+2. Exclude clipped portions. The tap must fall within the remaining visible area.
+3. Prefer candidates reached by the hit test. A widget covered by a dialog, bottom sheet, or another widget is a fallback when no reachable candidate exists. Widgets under the app's `IgnorePointer` or `AbsorbPointer` remain eligible as reachable candidates.
+4. Within the same priority, choose the smallest bounds; equal areas prefer the deeper widget. A remaining tie prefers the later registration.
 
-Viền được vẽ bằng một render object riêng ở foreground. Nó giữ nguyên kích thước, padding và hành vi hit test của `child`. `DecoratedBox` foreground, như mô tả của v0.1.0, tự báo hit trên toàn bộ diện tích nên có thể đổi widget nhận tap trên bản QA.
+The returned `bounds` is the outer bounding rectangle in global logical pixels, without subtracting clips. Borders use a dedicated foreground render object that preserves the child's size, padding, and hit testing.
 
-`bounds` là hình chữ nhật bao ngoài theo logical pixel, không tính clip.
+The floating control sits above the app's Navigator, dialogs, and bottom sheets, outside the app's own overlay. It does not change app layout or theme. While mode is disabled, only the control's area receives its input; input elsewhere reaches the app. It does not take keyboard focus, remains inside the safe area and above the keyboard, and is excluded from screenshots.
 
-## Widget nổi
+Testers can drag it anywhere within the screen. The host remembers the position for both the bug button and the expanded toolbar across mode changes.
 
-Khi có `BugInspector`, một widget nổi nằm trên cùng app, phía trên cả Navigator, dialog và bottom sheet của app:
+## State timeline and payload
 
-- Khi mode tắt: nút bug tròn. Bấm để bật inspect mode.
-- Khi đang chọn: thanh công cụ gồm dòng hướng dẫn, nút ✕ để thoát và nút **Select screen** (khi có màn hình được đánh dấu).
+`BugInspectorBlocObserver` records activity as soon as it is installed, including before selection mode is enabled:
 
-Widget nổi không ảnh hưởng tới app:
+| Source | Record kinds |
+| --- | --- |
+| BLoC and Cubit | `created`, `closed`, `error` |
+| BLoC | `event`, `transition` |
+| Cubit | `change` |
 
-- Không nằm trong cây widget của app (không thuộc Navigator hay Overlay của app) nên không đổi layout, theme hay route của app.
-- Chỉ phần diện tích của chính nó nhận tap; tap và thao tác kéo ở chỗ khác vẫn tới app như bình thường.
-- Không nhận focus bàn phím và được nhóm với các ô nhập của app, nên bấm vào nó không làm mất focus hay đóng bàn phím.
-- `captureScreenshot` không chụp nó.
-- Nằm trong safe area và phía trên bàn phím.
+The recorder keeps up to 300 records in memory by default, dropping the oldest when full. The host includes the last 30 seconds by default. Adjust `BugStateRecorder(maxRecords:)` and `historyWindow` as needed. Increasing the time window cannot recover records already dropped.
 
-Tester kéo được widget nổi tới bất kỳ đâu để không che widget cần chọn. Widget luôn nằm trong màn hình, bám đúng theo ngón tay, và giữ vị trí mới cho cả nút bug lẫn thanh công cụ ở các lần bật sau.
+Records contain UTC timestamps, instance IDs, and type names, not state/event values, full error messages, or stack traces. Current values are in `blocs[].state`. Match snapshots and history with `instanceId`, which is unique within the current run. History is not automatically filtered to the selected widget's scopes; use the IDs or an observer `filter`. The inspector's own `InspectModeCubit` is ignored, and recording errors do not propagate to the app's `emit` or `add`.
 
-## Chọn cả màn hình
-
-- Màn hình hiện tại là `BugInspectablePage` đang được vẽ và nằm trên cùng: route mới push thắng route bên dưới (route offstage bị bỏ qua), tab ẩn của `IndexedStack` bị bỏ qua, màn hình lồng bên trong (tab trong shell) thắng màn hình chứa nó. Dialog hoặc bottom sheet không phải màn hình nên màn hình bên dưới vẫn là màn hình hiện tại.
-- Nút **Select screen** trên thanh công cụ hiện tên (`label`, hoặc `id`) của màn hình sẽ được chọn. Nút xuất hiện một frame sau khi viền đã vẽ, và ẩn khi không có màn hình nào.
-- `blocs` của màn hình gồm các `BugBlocScope` bên trong màn hình (theo thứ tự trong tree), rồi các scope phía trên (gần trước), loại trùng theo instance. Vì vậy có thể đặt `BugInspectablePage` ở route builder, bên ngoài các scope mà page widget tự tạo.
-- `bounds` là bounds của màn hình, `widgetType` là kiểu của `child` (ví dụ `CatalogPage`), `widgetState` là params của `child` khi class đó dùng `BugInspectableWidget` (ví dụ `ProductPage(productId: ...)` ở route builder), `routeName` là `RouteSettings.name` của route nếu có.
-
-## State và timeline
-
-- `BugBlocScope` phải nằm dưới nơi cung cấp instance và trên `BugInspectable`. Với `BugBlocScope.lazy`, `readBloc` nhận context của chính scope, nên `context.read<T>()` hoạt động khi scope nằm dưới provider. Hàm này chỉ chạy khi tester chọn widget; nếu provider lazy chưa được tạo thì lúc đó mới tạo. Nếu không đọc được instance, snapshot có `type: unknown` và `captureErrorType`.
-- `BugBlocScope(bloc: ...)` nhận instance ngay lúc build. Biểu thức truyền vào chạy cả trên bản production.
-- Khi chọn, inspector đi ngược ancestor từ gần đến xa, loại trùng theo identity. Hai instance khác nhau của cùng class đều được giữ.
-- `snapshotBuilder` phải trả về giá trị JSON: chuỗi, số hữu hạn, bool, null, list, map có key là chuỗi (kiểm tra cả giá trị lồng nhau). Nếu builder ném lỗi hoặc trả giá trị không hợp lệ, snapshot đó có `state: {}` và `captureErrorType`; các scope khác vẫn được thu thập.
-- `blocs` chỉ phản ánh các scope khai báo phía trên widget. Đối chiếu thêm với `BlocBuilder`/`context.read<T>()` để biết widget thực sự dùng instance nào.
-- `widgetState` là params của `child` của marker, từ `BugInspectableWidget.bugSnapshot`; `{}` khi `child` không dùng mixin. Không có danh sách `State` của subtree hay ancestors (`widgetStates` đã bỏ từ `0.9.0`).
-- `bugSnapshot` theo cùng quy tắc JSON như `snapshotBuilder` (giá trị trong map), được gọi đồng bộ lúc chọn và không được thay đổi state. Nếu nó ném lỗi hoặc trả giá trị không hợp lệ, `widgetState` là `{}` và `widgetStateCaptureErrorType` là kiểu lỗi; `blocs` và `stateHistory` vẫn được thu thập. Đừng đưa mật khẩu, token hay dữ liệu cá nhân vào snapshot. Với item trong list, đưa id của item vào params để phân biệt.
-- Timeline chỉ lưu tên kiểu, không lưu giá trị state. Giá trị tại thời điểm chọn nằm trong `blocs[].state`. Dùng `instanceId` để đối chiếu snapshot với timeline trong cùng phiên chạy.
-- Snapshot và cutoff của timeline dùng chung một timestamp (`capturedAtUtc`).
-
-## Payload
+Selection capture and the history cutoff share `capturedAtUtc`. Example `selection.toJson()`:
 
 ```json
 {
@@ -384,82 +388,157 @@ Tester kéo được widget nổi tới bất kỳ đâu để không che widget
 }
 ```
 
-`kind` là `page` khi chọn cả màn hình. `route.name` xuất hiện khi route có `RouteSettings.name` (route `home` là `/`). `label` và `source.line` chỉ xuất hiện khi được truyền. `widgetState` luôn có mặt và là `{}` khi `child` không dùng `BugInspectableWidget`; `widgetStateCaptureErrorType` chỉ xuất hiện khi `bugSnapshot` lỗi. `blocs` và `stateHistory` có thể rỗng.
+`kind` is `page` for a screen selection. `route.name` appears when the route has a name (`home` uses `/`). `label`, `source.file`, and `source.line` appear only when supplied. `widgetState` is always present; `widgetStateCaptureErrorType` appears only on capture failure. `blocs` and `stateHistory` may be empty. Source metadata is supplied by the app, not discovered automatically.
 
-## Ảnh chụp màn hình
+## Screenshots and annotations
+
+Capture before opening a report so the form itself is not in the image. A callback that reuses the built-in report can do this:
 
 ```dart
-onWidgetSelected: (widgetContext, selection) async {
-  // Chờ frame không còn viền rồi chụp, trước khi mở form.
+Future<void> captureAndOpenReport(
+  BuildContext widgetContext,
+  BugWidgetSelection selection,
+) async {
   final screenshot = await BugInspector.captureScreenshot(widgetContext);
   if (!widgetContext.mounted) return;
-  // screenshot?.pngBytes, screenshot?.toImageRect(selection.bounds)
-},
+  await BugReportPage.open(
+    widgetContext,
+    selection: selection,
+    screenshot: screenshot,
+  );
+}
 ```
 
-`captureScreenshot` chụp `child` của host, không gồm overlay của inspector. Với `disableModeOnSelection: false`, tắt mode trước khi chụp để ảnh không có viền. `BugScreenshot.capturedAtUtc` được ghi riêng vì ảnh được chụp ở frame sau snapshot.
+`captureScreenshot` captures the host's child without its own launcher or overlay. By default it waits for the next frame so selection borders have disappeared. With `disableModeOnSelection: false`, disable mode first. Capture may return `null`; the report can still be sent without an image. Optional arguments are `pixelRatio`, `waitForNextFrame`, and `statusBar`.
 
-Status bar của hệ thống không nằm trong app nên ảnh chụp chỉ có nền app ở vùng đó. Khi nội dung nằm dưới safe area phía trên trên Android hoặc iOS, `captureScreenshot` thêm `BugScreenshot.statusBar`: một status bar giả cao đúng bằng phần safe area đó, kiểu Pixel 8 trên Android (giờ, camera đục lỗ, Wi-Fi, sóng, pin) và kiểu Dynamic Island trên iOS. Đồng hồ là giờ chụp (24 giờ nếu máy dùng 24 giờ), sóng, Wi-Fi và pin luôn đầy, icon màu đen hoặc trắng tùy nền app ở vùng đó. Status bar không nằm trong `pngBytes`: `BugScreenshotEditor` (cả `readOnly`) và `toAnnotatedPng` vẽ nó dưới viền `highlight` và các khung. `captureScreenshot(context, statusBar: false)` bỏ status bar.
+`BugScreenshot.capturedAtUtc` is separate from the selection timestamp. `pngBytes` contains the raw app PNG, while `toJson()` describes the screenshot without its bytes. Use `toImageRect(selection.bounds)` to convert global logical pixels to image pixels.
 
-## Đánh dấu trên ảnh chụp
+### Simulated status bar
 
-Tester vẽ khung chữ nhật lên ảnh chụp để chỉ thêm các chỗ khác, ví dụ một nhãn sai hay một icon bị thiếu. App giữ một `BugScreenshotAnnotationController` trong form báo lỗi:
+The real system status bar is not part of the app capture. On Android and iOS, when the content extends under the top safe area, the default capture adds `BugScreenshot.statusBar` metadata: a Pixel 8 style on Android or a Dynamic Island style on iOS, matching the safe-area height.
+
+The clock uses capture time and the device's 12/24-hour preference; signal, Wi-Fi, and battery indicators are always full. Icons are black or white according to the app background. These are simulated graphics, not evidence of the actual device model, connectivity, or battery level.
+
+The status bar is not in raw `pngBytes`. `BugScreenshotEditor` (including read-only previews) and `toAnnotatedPng` render it beneath the highlight and annotations. Use `captureScreenshot(context, statusBar: false)` to omit it.
+
+### Custom preview, editor, and export
+
+The built-in form handles annotation ownership and export. For your own form, create one `BugScreenshotAnnotationController` for its lifetime and dispose it when the form closes. Use the same controller for preview and editor. Given the captured `screenshot`, `selection`, and controller:
 
 ```dart
-final annotations = BugScreenshotAnnotationController(); // dispose() cùng form
+Widget reportPreview({
+  required BugScreenshot screenshot,
+  required BugWidgetSelection selection,
+  required BugScreenshotAnnotationController annotations,
+  required VoidCallback openEditor,
+}) =>
+    GestureDetector(
+      onTap: openEditor,
+      child: BugScreenshotEditor(
+        screenshot: screenshot,
+        controller: annotations,
+        highlight: selection.bounds,
+        readOnly: true,
+      ),
+    );
 
-// Trong form: ảnh xem trước, chạm vào để mở trang vẽ.
-GestureDetector(
-  onTap: openEditor,
-  child: BugScreenshotEditor(
-    screenshot: screenshot,
-    controller: annotations,
-    highlight: selection.bounds, // viền nét đứt, không sửa được
-    readOnly: true,
-  ),
-),
-const Text('Chạm vào ảnh để đánh dấu vùng lỗi'),
+Widget reportEditor({
+  required BugScreenshot screenshot,
+  required BugWidgetSelection selection,
+  required BugScreenshotAnnotationController annotations,
+}) =>
+    BugScreenshotEditor(
+      screenshot: screenshot,
+      controller: annotations,
+      highlight: selection.bounds,
+    );
+```
 
-// Trang vẽ toàn màn hình, dùng chung controller.
-BugScreenshotEditor(screenshot: screenshot, controller: annotations)
+For PNG export, pass the same highlight and styles as the editor:
 
-// Khi gửi:
-// Truyền cùng highlight với editor để ảnh xuất ra giống ảnh tester thấy.
+```dart
 final png = await screenshot.toAnnotatedPng(
   annotations.annotations,
   highlight: selection.bounds,
 );
-final json = {...screenshot.toJson(), 'annotations': annotations.toJson()};
+final metadata = {...screenshot.toJson(), 'annotations': annotations.toJson()};
 ```
 
-Thao tác trong `BugScreenshotEditor`:
+Editor interactions:
 
-- Kéo trên vùng trống của ảnh để vẽ khung mới. Chạm mà không kéo thì không vẽ, và bỏ chọn khung đang chọn.
-- Chạm vào khung để chọn. Nếu nhiều khung chồng nhau, khung nhỏ nhất được chọn. Kéo khung để di chuyển.
-- Kéo một trong 4 tay nắm ở góc khung đang chọn để đổi kích thước; góc đối diện đứng yên. Kéo qua góc đối diện thì khung lật lại.
-- Nút ✕ cạnh khung đang chọn (`BugScreenshotEditor.deleteButtonKey`) xóa khung đó. App cũng có thể gọi `removeSelected()`, `removeAt()` hoặc `clear()` trên controller.
-- Khung luôn nằm trong ảnh và nhỏ nhất `minRectSize` (16) logical pixel trên màn hình.
-- Dùng hai ngón tay để phóng to ảnh (tối đa `maxZoom`, mặc định 5 lần) và di chuyển ảnh đã phóng to, để vẽ và chỉnh khung chính xác hơn. Ngón thứ hai chạm xuống thì hủy thao tác ngón đầu đang làm (vẽ, kéo hay đổi kích thước), và các ngón chỉ thu phóng cho tới khi nhấc hết tay. Thả tay ở gần mức vừa khung thì ảnh về lại mức đó. Khi đang phóng to, nút ở góc dưới bên phải (`BugScreenshotEditor.resetZoomButtonKey`) hiện mức zoom, chạm vào để về lại cả ảnh. `maxZoom: 1` tắt zoom. Nét khung, tay nắm và vùng chạm giữ nguyên kích thước trên màn hình ở mọi mức zoom.
+- Drag on an empty part of the image to draw a rectangle. A tap without a drag clears selection without drawing.
+- Tap a rectangle to select it; overlapping rectangles prefer the smallest. Drag a selected rectangle to move it.
+- Drag one of its four corner handles to resize it. The opposite corner stays fixed; crossing it flips the rectangle.
+- Tap the selected rectangle's close button (`BugScreenshotEditor.deleteButtonKey`) to delete it. The controller also exposes `removeSelected()`, `removeAt()`, and `clear()`.
+- Rectangles stay within the image, with a minimum width and height of `BugScreenshotEditor.minRectSize` (16 logical screen pixels).
+- Pinch with two fingers to zoom and pan, up to `maxZoom` (default 5). A second finger cancels the current draw/move/resize gesture; all fingers then control zoom until released. Releasing near fit-to-view resets the image. The zoom button (`resetZoomButtonKey`) also resets it. `maxZoom: 1` disables zoom. Strokes, handles, and touch targets retain their screen size at every zoom level.
 
-Editor giữ tỉ lệ ảnh và chiếm kích thước lớn nhất mà constraints cho phép. Nó nhận mọi thao tác chạm bắt đầu trên ảnh ngay khi chạm xuống, nên kéo trên ảnh không cuộn list chứa nó: đặt editor tương tác trong một trang riêng và dùng `readOnly: true` cho ảnh xem trước trong form có cuộn. Tọa độ khung là pixel của ảnh (`coordinateUnit: image_pixels`), cùng hệ với `BugScreenshot.toImageRect`. `toAnnotatedPng` vẽ viền nét đứt của `highlight` (nếu truyền) ở dưới, rồi vẽ mỗi khung với nét `strokeWidth * pixelRatio` pixel ảnh, nên ảnh xuất ra giống editor khi hiện ảnh bằng kích thước thật của app. Không có khung nào, không có `highlight` và không có `statusBar` thì `toAnnotatedPng` trả về `pngBytes` mà không encode lại.
+The editor preserves image aspect ratio and uses the largest size allowed by its constraints. It claims gestures starting on the image immediately, so dragging does not scroll a parent list. Put the interactive editor on a separate page with bounded constraints; use `readOnly: true` for previews in a scrolling form.
 
-## Lưu ý
+`highlight` uses global logical pixels; do not pre-convert it. Annotation rectangles use image pixels (`coordinateUnit: image_pixels`), the same coordinates returned by `toImageRect`. Export renders the dashed highlight below the rectangles, with annotation strokes `strokeWidth * pixelRatio` image pixels wide. If you customize `color`, `strokeWidth`, or `highlightColor`, pass the same values to the editor and export. With no annotations, highlight, or simulated status bar, export returns the original PNG without re-encoding.
 
-- Với `Expanded`, `Flexible`, `Positioned`, đặt `BugInspectable` bên trong `child` của chúng. Trong sliver list, đặt trong item builder hoặc `SliverToBoxAdapter`.
-- `widgetType` lấy từ `runtimeType`; bản build có `--obfuscate` sẽ cho tên đã rút gọn.
-- `widgetContext` dùng ngay trong callback để tìm Navigator. Sau `await`, kiểm tra `widgetContext.mounted`.
-- Dùng ID ổn định (`home.quick_add_water`) và đường dẫn tương đối từ repo cho `sourceFile`.
+## Production builds
 
-## Phát triển
+`BugInspector.enabledFromEnvironment` is a compile-time constant. Omitting the define or setting `--dart-define=FLUTTER_QA_INSPECTOR=false` gives these behaviors:
+
+| Component | Without the define |
+| --- | --- |
+| `FlutterQaInspector` | `install` leaves `Bloc.observer` unchanged; `recorder` is `null`; `wrap`/`builder` return the original child. |
+| `BugInspector` | Returns `child`, regardless of `enabled`; no launcher, selection layer, or `InspectModeCubit` is created. |
+| `BugInspectable`, `BugInspectablePage`, `.route` | Return `child`; no registration, extra render object, or `GlobalKey`. |
+| `BugBlocScope.lazy` | Returns `child` and never calls `readBloc` during the inspector flow. |
+| `BugInspectableWidget` | Overrides no widget methods; the inspector never calls `bugSnapshot()`. |
+| `BugInspectorBlocObserver` | Records nothing, even if manually installed. |
+| `maybeModeCubitOf`, `captureScreenshot` | Return `null`. |
+| `BugScreenshotEditor` | Builds an empty box. |
+| `BugScreenshot.toAnnotatedPng` | Returns the original `pngBytes`. |
+
+Direct marker/host wrappers still add widget elements, but no render objects. Their layout, paint, hit testing, and semantics remain unchanged. [production_build_test.dart](test/production_build_test.dart) checks render-tree and semantics parity against an app without the package. No current binary-size measurement is provided; historical measurements before the report/plugin integration do not describe version `0.9.0`.
+
+The compile-time gate does not prevent evaluation of arguments supplied by your app. Keep these boundaries in mind:
+
+- Prefer `BugBlocScope.lazy` over `BugBlocScope(bloc: context.read<T>())`; the latter reads its provider during build even in production.
+- Gate app-owned QA recorders, observers, Cubits, and custom report entry points with `if (BugInspector.enabledFromEnvironment)`. The facade already gates its own installation and report entry point.
+- Direct calls to `BugReportPage` and `BugReportBundle` still open forms or create bundles without the define; gate your own entry points if they must be QA-only.
+- The native `share_plus` plugin remains included.
+- Use `maybeModeCubitOf` instead of reading an inspector Cubit that does not exist in production.
+
+Before release, ensure production commands and CI omit `FLUTTER_QA_INSPECTOR=true`, observer setup is gated, and lazy scopes are used where provider creation must remain unchanged.
+
+## Integration notes
+
+- With `Expanded`, `Flexible`, or `Positioned`, put the marker inside their `child` to preserve parent data. In sliver lists, mark box children inside the item builder or `SliverToBoxAdapter`, not the sliver itself.
+- `widgetType` comes from `runtimeType`; builds using `--obfuscate` may shorten it. Use stable marker IDs such as `home.quick_add_water` and repository-relative `sourceFile` paths.
+- Supply `sourceLine` only when known; source metadata can drift between builds and checkouts. Match the report to the correct app revision before investigating.
+- Registry entries, timeline history, and annotations are not automatically persisted to disk. The exported bundle is the report artifact.
+
+## Development and verification
+
+From the package directory:
 
 ```sh
 flutter pub get
 flutter analyze
-flutter test                                          # hành vi bản production
-flutter test --dart-define=FLUTTER_QA_INSPECTOR=true  # hành vi bản QA
+flutter test                                         # Production behavior
+flutter test --dart-define=FLUTTER_QA_INSPECTOR=true   # QA behavior
 
 cd example
 flutter run --dart-define=FLUTTER_QA_INSPECTOR=true
 ```
 
-Mỗi lệnh `flutter test` chỉ chạy nhóm test của chế độ đó và bỏ qua (skip) nhóm còn lại, nên CI cần chạy cả hai.
+The test suites gate QA-specific and production-specific groups separately; run both commands because either command skips the other mode's groups. For example changes, also run `flutter analyze` and `flutter test` from `example/`, adding the QA define when checking QA behavior.
+
+Runtime acceptance checks for a host integration:
+
+| Check | Expected behavior |
+| --- | --- |
+| Build without the QA define | No launcher or inspector observer installation through the facade; normal app behavior. |
+| Enable and cancel selection | Borders appear without layout changes; pointer input is blocked only while selecting and resumes on exit. |
+| Select an interactive widget | Correct ID, bounds, and snapshots; the business action is not triggered by the selection tap. |
+| Select nested, clipped, or hidden markers | Selection follows visibility, hit-test priority, area, and depth rules. |
+| Select a screen or tab | **Select screen** targets the current painted page and captures the declared page scopes. |
+| Serialize one invalid snapshot | Its capture error is reported; other snapshots and history remain available. |
+| Capture, annotate, and send | The screenshot precedes the form, annotations align with image coordinates, and the ZIP has the documented entries. |
+| Exercise Android/iOS QA builds | Selection, navigation, editor, and sharing work on the target device with the host's build configuration. |
+
+These are acceptance criteria, not a claim of device verification. Analyzer results and widget tests do not replace runtime checks on the target platforms. See the [example app](example/lib/app.dart) for an integration using existing app state and the built-in report flow.
