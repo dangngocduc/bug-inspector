@@ -1,3 +1,57 @@
+## 0.5.0
+
+- `BugInspectableState`, a mixin for `State`: `bugSnapshot()` returns the
+  fields of the state as a JSON value. When a widget or a page is selected,
+  `BugWidgetSelection.widgetStates` holds a `BugWidgetStateSnapshot` of every
+  state with the mixin inside the selection, in tree order, then of those
+  above it, nearest first. A snapshot that throws or is not JSON has an empty
+  `state` and `captureErrorType`.
+- The mixin overrides nothing. Without the define, `bugSnapshot` is never
+  called and is left out of the build.
+
+## 0.4.0
+
+- The inspector only runs in builds made with
+  `--dart-define=FLUTTER_QA_INSPECTOR=true`
+  (`BugInspector.enabledFromEnvironment`). Without it, `BugInspector`,
+  `BugInspectable`, `BugInspectablePage` and `BugBlocScope` only return their
+  child, `BugInspectorBlocObserver` records nothing, and
+  `maybeModeCubitOf`/`captureScreenshot` return `null`. The check is a
+  constant, so the inspector code is left out of such builds: 0.7 KB of
+  package code in the example's release build, against 42.5 KB with the
+  define.
+- `BugInspector.enabled` (default `true`) turns the inspector off in a QA
+  build. A disabled host creates no `InspectModeCubit`.
+- `BugBlocScope.lazy` reads its bloc with `readBloc` only when a widget is
+  selected, so a lazy provider is not created by the scope. `capture` takes
+  the context of the scope. `BugBlocScope.bloc` is `null` for lazy scopes.
+- `BugInspectorBlocObserver` drops its own errors, for example from `filter`,
+  instead of throwing inside the app's `emit` or `add`.
+- `BugInspector`, `BugInspectable` and `BugInspectablePage` are now
+  `StatelessWidget`s.
+- The tests run in two modes: `flutter test` checks the production
+  behavior, and `flutter test --dart-define=FLUTTER_QA_INSPECTOR=true` checks
+  the inspector.
+
+## 0.3.0
+
+- A floating, draggable control on top of the app replaces the exit pill and
+  the separate page button. While the mode is disabled it is a bug button
+  that enables the mode, so the app needs no Inspect entry in its own UI.
+  While selecting it is a toolbar with a hint, an exit button and the
+  "Select screen" button.
+- The control is not part of the app content: no layout change, only its own
+  area takes taps, it never takes focus or closes the keyboard, and
+  `captureScreenshot` leaves it out. It stays inside the safe area and above
+  the keyboard, follows the finger and keeps its position across mode
+  changes.
+- Screen readers see each control as its own button with a tap action, and
+  dragging is not offered as a scroll action.
+- New `BugInspector.showLauncher`, `floatingAlignment`, `selectionHint`, and
+  public `launcherKey`, `exitButtonKey`, `pageButtonKey`.
+- Removed `showExitButton`, `exitButtonLabel`, `exitButtonAlignment`,
+  `exitButtonBuilder`, `BugExitButtonBuilder` and `pageButtonAlignment`.
+
 ## 0.2.0
 
 - `BugInspectablePage` marks a whole screen. While selecting, pages get their

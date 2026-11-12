@@ -15,13 +15,13 @@ typedef BugSnapshotBuilder<S> = Object? Function(S state);
 /// [BugBlocSnapshot] with [snapshotBuilder].
 ///
 /// Place it below the provider of the instance and above the inspected
-/// widgets. Reading the instance with `context.read<T>()` may create a lazy
-/// provider.
+/// widgets. Prefer [BugBlocScope.lazy], which reads the instance only when a
+/// widget is selected:
 ///
 /// ```dart
-/// BugBlocScope<CartState>(
+/// BugBlocScope<CartState>.lazy(
 ///   id: 'cart_cubit',
-///   bloc: context.read<CartCubit>(),
+///   readBloc: (context) => context.read<CartCubit>(),
 ///   snapshotBuilder: (state) => {
 ///     'status': state.status.name,
 ///     'itemCount': state.items.length,
@@ -29,21 +29,48 @@ typedef BugSnapshotBuilder<S> = Object? Function(S state);
 ///   child: const CartView(),
 /// )
 /// ```
+///
+/// The scope always only returns [child]. Without
+/// `--dart-define=FLUTTER_QA_INSPECTOR=true`, or outside an enabled
+/// [BugInspector], nothing selects a widget, so [BugBlocScope.lazy] never
+/// calls [readBloc].
 class BugBlocScope<S> extends StatelessWidget {
   /// Creates a scope for [bloc].
+  ///
+  /// The expression passed as [bloc] runs on every build, also when the
+  /// inspector is disabled. `context.read<T>()` there creates a lazy
+  /// provider right away. Use [BugBlocScope.lazy] to avoid that.
   const BugBlocScope({
     super.key,
     required this.id,
-    required this.bloc,
+    required StateStreamable<S> this.bloc,
     required this.snapshotBuilder,
     required this.child,
-  });
+  }) : readBloc = null;
+
+  /// Creates a scope that calls [readBloc] only when a widget below it is
+  /// selected, with the context of this scope.
+  ///
+  /// The app builds and runs exactly as without the scope: nothing is read
+  /// while the inspector is disabled or not selecting. A lazy provider that
+  /// was not created yet is created by the selection.
+  const BugBlocScope.lazy({
+    super.key,
+    required this.id,
+    required StateStreamable<S> Function(BuildContext context) this.readBloc,
+    required this.snapshotBuilder,
+    required this.child,
+  }) : bloc = null;
 
   /// A stable identifier stored in [BugBlocSnapshot.id].
   final String id;
 
-  /// The BLoC or Cubit instance whose state is captured.
-  final StateStreamable<S> bloc;
+  /// The BLoC or Cubit instance whose state is captured, or `null` for
+  /// [BugBlocScope.lazy].
+  final StateStreamable<S>? bloc;
+
+  /// Reads the instance when a widget is selected, for [BugBlocScope.lazy].
+  final StateStreamable<S> Function(BuildContext context)? readBloc;
 
   /// Converts the current state into a JSON value.
   final BugSnapshotBuilder<S> snapshotBuilder;
@@ -51,12 +78,42 @@ class BugBlocScope<S> extends StatelessWidget {
   /// The widget below this scope.
   final Widget child;
 
-  /// Reads the current state of [bloc] and builds its snapshot.
+  /// Reads the current state of the instance and builds its snapshot.
   ///
-  /// Never throws. When [snapshotBuilder] throws or returns a value that is
-  /// not JSON compatible, the snapshot has an empty `state` and
-  /// [BugBlocSnapshot.captureErrorType] is set.
-  BugBlocSnapshot capture() {
+  /// [context] is the context of this scope. [BugBlocScope.lazy] needs it to
+  /// read the instance.
+  ///
+  /// Never throws. When the instance cannot be read, [snapshotBuilder] throws
+  /// or it returns a value that is not JSON compatible, the snapshot has an
+  /// empty `state` and [BugBlocSnapshot.captureErrorType] is set. When the
+  /// instance cannot be read, its `type` and `instanceId` are `unknown`.
+  BugBlocSnapshot capture([BuildContext? context]) =>
+      _captureIn(context, HashSet<Object>.identity())!;
+
+  /// Captures the instance unless [seen] already contains it.
+  BugBlocSnapshot? _captureIn(BuildContext? context, Set<Object> seen) {
+    final StateStreamable<S> bloc;
+    try {
+      final given = this.bloc;
+      if (given != null) {
+        bloc = given;
+      } else if (context != null) {
+        bloc = readBloc!(context);
+      } else {
+        throw StateError('BugBlocScope.lazy needs the context of the scope.');
+      }
+    } catch (error) {
+      _debugReport(error, 'read the instance of');
+      return BugBlocSnapshot(
+        id: id,
+        type: 'unknown',
+        instanceId: 'unknown',
+        state: const <String, Object?>{},
+        captureErrorType: error.runtimeType.toString(),
+      );
+    }
+    if (!seen.add(bloc)) return null;
+
     final type = bloc.runtimeType.toString();
     final instanceId = BugStateRecorder.instanceIdOf(bloc);
     String? stateType;
@@ -71,13 +128,7 @@ class BugBlocScope<S> extends StatelessWidget {
         state: _copyJsonValue(snapshotBuilder(state)),
       );
     } catch (error) {
-      assert(() {
-        debugPrint(
-          'flutter_qa_inspector: could not capture BugBlocScope "$id" '
-          '($type): $error',
-        );
-        return true;
-      }());
+      _debugReport(error, 'capture');
       return BugBlocSnapshot(
         id: id,
         type: type,
@@ -89,6 +140,15 @@ class BugBlocScope<S> extends StatelessWidget {
     }
   }
 
+  void _debugReport(Object error, String action) {
+    assert(() {
+      debugPrint(
+        'flutter_qa_inspector: could not $action BugBlocScope "$id": $error',
+      );
+      return true;
+    }());
+  }
+
   @override
   Widget build(BuildContext context) => child;
 
@@ -97,7 +157,8 @@ class BugBlocScope<S> extends StatelessWidget {
     super.debugFillProperties(properties);
     properties
       ..add(StringProperty('id', id))
-      ..add(DiagnosticsProperty<Object>('bloc', bloc));
+      ..add(DiagnosticsProperty<Object>('bloc', bloc, defaultValue: null))
+      ..add(FlagProperty('lazy', value: readBloc != null, ifTrue: 'lazy'));
   }
 }
 
@@ -116,9 +177,9 @@ List<BugBlocSnapshot> _captureBlocSnapshots(
   final seen = HashSet<Object>.identity();
   void capture(Element element) {
     final widget = element.widget;
-    if (widget is BugBlocScope<Object?> && seen.add(widget.bloc)) {
-      snapshots.add(widget.capture());
-    }
+    if (widget is! BugBlocScope<Object?>) return;
+    final snapshot = widget._captureIn(element, seen);
+    if (snapshot != null) snapshots.add(snapshot);
   }
 
   if (includeDescendants) {

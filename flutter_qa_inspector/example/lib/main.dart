@@ -4,14 +4,16 @@ import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
 import 'app.dart';
 
-/// Build QA builds with `--dart-define=QA_INSPECTOR=true`.
-const qaInspectorEnabled = bool.fromEnvironment('QA_INSPECTOR');
-
 void main() {
-  // Install the observer before any BLoC/Cubit is created, and keep the
-  // observer the app already uses.
-  final recorder = qaInspectorEnabled ? BugStateRecorder() : null;
-  if (recorder != null) {
+  // `true` only in builds made with --dart-define=FLUTTER_QA_INSPECTOR=true.
+  // It is a constant, so a production build leaves this branch out.
+  const qaEnabled = BugInspector.enabledFromEnvironment;
+
+  BugStateRecorder? recorder;
+  if (qaEnabled) {
+    // Install the observer before any BLoC/Cubit is created, and keep the
+    // observer the app already uses.
+    recorder = BugStateRecorder();
     Bloc.observer = MultiBlocObserver(
       observers: [
         Bloc.observer,
@@ -20,5 +22,5 @@ void main() {
     );
   }
 
-  runApp(ExampleApp(qaEnabled: qaInspectorEnabled, recorder: recorder));
+  runApp(ExampleApp(qaEnabled: qaEnabled, recorder: recorder));
 }

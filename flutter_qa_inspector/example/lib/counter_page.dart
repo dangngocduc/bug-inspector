@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
 import 'catalog_page.dart';
-import 'inspect_button.dart';
 
 class CounterCubit extends Cubit<int> {
   CounterCubit() : super(0);
@@ -18,17 +17,15 @@ class CounterPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Expose the cubit to every BugInspectable below. Outside a BugInspector
-    // the scope and the inspectables only return their child.
-    return BugBlocScope<int>(
+    // Expose the cubit to every BugInspectable below. The cubit is only read
+    // when the tester selects a widget. Without an enabled BugInspector the
+    // scope and the inspectables only return their child.
+    return BugBlocScope<int>.lazy(
       id: 'counter_cubit',
-      bloc: context.read<CounterCubit>(),
+      readBloc: (context) => context.read<CounterCubit>(),
       snapshotBuilder: (value) => {'value': value},
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Counter'),
-          actions: const [InspectButton()],
-        ),
+        appBar: AppBar(title: const Text('Counter')),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -38,7 +35,7 @@ class CounterPage extends StatelessWidget {
                   id: 'counter.increment',
                   label: 'Increment button',
                   sourceFile: 'example/lib/counter_page.dart',
-                  sourceLine: 37,
+                  sourceLine: 34,
                   child: FilledButton(
                     onPressed: context.read<CounterCubit>().increment,
                     child: Text('Tăng ($value)'),

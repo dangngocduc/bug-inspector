@@ -2,6 +2,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'support/build_mode.dart';
+
 class _CounterCubit extends Cubit<int> {
   _CounterCubit() : super(0);
 
@@ -100,112 +102,115 @@ void main() {
     });
   });
 
-  group('BugInspectorBlocObserver', () {
-    late BlocObserver previousObserver;
+  // The observer records nothing without the define.
+  qaBuildOnly(() {
+    group('BugInspectorBlocObserver', () {
+      late BlocObserver previousObserver;
 
-    setUp(() => previousObserver = Bloc.observer);
-    tearDown(() => Bloc.observer = previousObserver);
+      setUp(() => previousObserver = Bloc.observer);
+      tearDown(() => Bloc.observer = previousObserver);
 
-    test('records cubit activity', () async {
-      final recorder = BugStateRecorder();
-      Bloc.observer = BugInspectorBlocObserver(recorder: recorder);
+      test('records cubit activity', () async {
+        final recorder = BugStateRecorder();
+        Bloc.observer = BugInspectorBlocObserver(recorder: recorder);
 
-      final cubit = _CounterCubit()
-        ..increment()
-        ..fail();
-      await cubit.close();
+        final cubit = _CounterCubit()
+          ..increment()
+          ..fail();
+        await cubit.close();
 
-      final id = BugStateRecorder.instanceIdOf(cubit);
-      expect(
-        recorder.records.map((record) => record.kind),
-        <BugStateRecordKind>[
-          BugStateRecordKind.created,
-          BugStateRecordKind.change,
-          BugStateRecordKind.error,
-          BugStateRecordKind.closed,
-        ],
-      );
-      expect(
-          recorder.records.every((record) => record.instanceId == id), isTrue);
-      expect(recorder.records.every((r) => r.timestampUtc.isUtc), isTrue);
+        final id = BugStateRecorder.instanceIdOf(cubit);
+        expect(
+          recorder.records.map((record) => record.kind),
+          <BugStateRecordKind>[
+            BugStateRecordKind.created,
+            BugStateRecordKind.change,
+            BugStateRecordKind.error,
+            BugStateRecordKind.closed,
+          ],
+        );
+        expect(recorder.records.every((record) => record.instanceId == id),
+            isTrue);
+        expect(recorder.records.every((r) => r.timestampUtc.isUtc), isTrue);
 
-      final change = recorder.records[1];
-      expect(change.blocType, '_CounterCubit');
-      expect(change.fromStateType, 'int');
-      expect(change.toStateType, 'int');
-      expect(recorder.records[2].errorType, 'StateError');
-      expect(recorder.records.first.stateType, 'int');
-    });
+        final change = recorder.records[1];
+        expect(change.blocType, '_CounterCubit');
+        expect(change.fromStateType, 'int');
+        expect(change.toStateType, 'int');
+        expect(recorder.records[2].errorType, 'StateError');
+        expect(recorder.records.first.stateType, 'int');
+      });
 
-    test('records bloc events and transitions without duplicate changes',
-        () async {
-      final recorder = BugStateRecorder();
-      Bloc.observer = BugInspectorBlocObserver(recorder: recorder);
+      test('records bloc events and transitions without duplicate changes',
+          () async {
+        final recorder = BugStateRecorder();
+        Bloc.observer = BugInspectorBlocObserver(recorder: recorder);
 
-      final bloc = _CounterBloc()..add(_Incremented());
-      await Future<void>.delayed(Duration.zero);
-      await bloc.close();
+        final bloc = _CounterBloc()..add(_Incremented());
+        await Future<void>.delayed(Duration.zero);
+        await bloc.close();
 
-      expect(
-        recorder.records.map((record) => record.kind),
-        <BugStateRecordKind>[
-          BugStateRecordKind.created,
-          BugStateRecordKind.event,
-          BugStateRecordKind.transition,
-          BugStateRecordKind.closed,
-        ],
-      );
-      final transition = recorder.records[2];
-      expect(transition.eventType, '_Incremented');
-      expect(transition.fromStateType, 'int');
-      expect(transition.toStateType, 'int');
-      expect(recorder.records[1].eventType, '_Incremented');
-    });
+        expect(
+          recorder.records.map((record) => record.kind),
+          <BugStateRecordKind>[
+            BugStateRecordKind.created,
+            BugStateRecordKind.event,
+            BugStateRecordKind.transition,
+            BugStateRecordKind.closed,
+          ],
+        );
+        final transition = recorder.records[2];
+        expect(transition.eventType, '_Incremented');
+        expect(transition.fromStateType, 'int');
+        expect(transition.toStateType, 'int');
+        expect(recorder.records[1].eventType, '_Incremented');
+      });
 
-    test('ignores InspectModeCubit and honours the filter', () async {
-      final recorder = BugStateRecorder();
-      Bloc.observer = BugInspectorBlocObserver(
-        recorder: recorder,
-        filter: (bloc) => bloc is! _CounterBloc,
-      );
+      test('ignores InspectModeCubit and honours the filter', () async {
+        final recorder = BugStateRecorder();
+        Bloc.observer = BugInspectorBlocObserver(
+          recorder: recorder,
+          filter: (bloc) => bloc is! _CounterBloc,
+        );
 
-      final mode = InspectModeCubit()..enable();
-      final bloc = _CounterBloc()..add(_Incremented());
-      final cubit = _CounterCubit()..increment();
-      await Future<void>.delayed(Duration.zero);
-      await Future.wait(<Future<void>>[
-        mode.close(),
-        bloc.close(),
-        cubit.close(),
-      ]);
+        final mode = InspectModeCubit()..enable();
+        final bloc = _CounterBloc()..add(_Incremented());
+        final cubit = _CounterCubit()..increment();
+        await Future<void>.delayed(Duration.zero);
+        await Future.wait(<Future<void>>[
+          mode.close(),
+          bloc.close(),
+          cubit.close(),
+        ]);
 
-      expect(
-        recorder.records.map((record) => record.blocType).toSet(),
-        <String>{'_CounterCubit'},
-      );
-    });
+        expect(
+          recorder.records.map((record) => record.blocType).toSet(),
+          <String>{'_CounterCubit'},
+        );
+      });
 
-    test('keeps the app observer through MultiBlocObserver', () async {
-      final recorder = BugStateRecorder();
-      final appObserver = _CountingObserver();
-      Bloc.observer = MultiBlocObserver(
-        observers: <BlocObserver>[
-          appObserver,
-          BugInspectorBlocObserver(recorder: recorder),
-        ],
-      );
+      test('keeps the app observer through MultiBlocObserver', () async {
+        final recorder = BugStateRecorder();
+        final appObserver = _CountingObserver();
+        Bloc.observer = MultiBlocObserver(
+          observers: <BlocObserver>[
+            appObserver,
+            BugInspectorBlocObserver(recorder: recorder),
+          ],
+        );
 
-      final cubit = _CounterCubit()
-        ..increment()
-        ..increment();
-      await cubit.close();
+        final cubit = _CounterCubit()
+          ..increment()
+          ..increment();
+        await cubit.close();
 
-      expect(appObserver.changes, 2);
-      expect(
-        recorder.records
-            .where((record) => record.kind == BugStateRecordKind.change),
-        hasLength(2),
-      );
+        expect(appObserver.changes, 2);
+        expect(
+          recorder.records
+              .where((record) => record.kind == BugStateRecordKind.change),
+          hasLength(2),
+        );
+      });
     });
   });
 

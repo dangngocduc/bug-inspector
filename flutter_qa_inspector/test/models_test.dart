@@ -29,6 +29,13 @@ void main() {
             state: <String, Object?>{'value': 2},
           ),
         ],
+        widgetStates: const <BugWidgetStateSnapshot>[
+          BugWidgetStateSnapshot(
+            type: '_CounterPageState',
+            widgetType: 'CounterPage',
+            state: <String, Object?>{'step': 1},
+          ),
+        ],
         stateHistory: <BugStateRecord>[
           BugStateRecord(
             timestampUtc: DateTime.utc(2026, 11, 11, 7, 40, 1, 712),
@@ -61,6 +68,13 @@ void main() {
             'instanceId': '2a3b4c',
             'stateType': 'int',
             'state': <String, Object?>{'value': 2},
+          },
+        ],
+        'widgetStates': <Object?>[
+          <String, Object?>{
+            'type': '_CounterPageState',
+            'widgetType': 'CounterPage',
+            'state': <String, Object?>{'step': 1},
           },
         ],
         'stateHistory': <Object?>[
@@ -107,7 +121,24 @@ void main() {
       expect(bare.containsKey('route'), isFalse);
       expect(bare.containsKey('label'), isFalse);
       expect(bare['blocs'], isEmpty);
+      expect(bare['widgetStates'], isEmpty);
       expect(bare['stateHistory'], isEmpty);
+    });
+  });
+
+  test('BugWidgetStateSnapshot.toJson adds the capture error', () {
+    const snapshot = BugWidgetStateSnapshot(
+      type: '_FormState',
+      widgetType: 'Form',
+      state: <String, Object?>{},
+      captureErrorType: 'StateError',
+    );
+    expect(snapshot.hasCaptureError, isTrue);
+    expect(snapshot.toJson(), <String, Object?>{
+      'type': '_FormState',
+      'widgetType': 'Form',
+      'state': <String, Object?>{},
+      'captureErrorType': 'StateError',
     });
   });
 
@@ -172,6 +203,17 @@ void main() {
       expect(snapshot.state, <String, Object?>{});
       expect(snapshot.stateType, 'int');
       expect(snapshot.toJson()['captureErrorType'], 'StateError');
+    });
+
+    test('a lazy scope needs a context to read its bloc', () {
+      final snapshot = BugBlocScope<int>.lazy(
+        id: 'lazy',
+        readBloc: (_) => throw UnimplementedError(),
+        snapshotBuilder: (value) => value,
+        child: const SizedBox(),
+      ).capture();
+      expect(snapshot.captureErrorType, 'StateError');
+      expect(snapshot.type, 'unknown');
     });
 
     test('accepts enum names and ISO dates', () {

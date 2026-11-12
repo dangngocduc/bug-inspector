@@ -27,17 +27,16 @@ class ExampleApp extends StatelessWidget {
     return MaterialApp(
       title: 'QA Inspector Example',
       theme: ThemeData(colorSchemeSeed: Colors.indigo),
-      builder: (context, child) {
+      // When qaEnabled is false, BugInspector returns the builder's child
+      // unchanged, and every BugInspectable, BugInspectablePage and
+      // BugBlocScope below it only returns its child.
+      builder: (context, child) => BugInspector(
+        enabled: qaEnabled,
+        stateRecorder: recorder,
+        onWidgetSelected: _openBugReport,
         // Keep the builder's child, it holds the Navigator.
-        final appContent = child ?? const SizedBox.shrink();
-        if (!qaEnabled) return appContent;
-
-        return BugInspector(
-          stateRecorder: recorder,
-          onWidgetSelected: _openBugReport,
-          child: appContent,
-        );
-      },
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: BlocProvider<CounterCubit>(
         create: (_) => CounterCubit(),
         // Marks the whole screen, so the tester can report the page itself.

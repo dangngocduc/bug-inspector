@@ -89,6 +89,14 @@ typedef BugStateRecordFilter = bool Function(BlocBase<dynamic> bloc);
 /// );
 /// ```
 ///
+/// Without `--dart-define=FLUTTER_QA_INSPECTOR=true` it records nothing.
+/// Still, install it inside `if (BugInspector.enabledFromEnvironment) { ... }`
+/// so that such a build does not even add it to `Bloc.observer`.
+///
+/// Recording never interferes with the app: an error while recording, for
+/// example thrown by [filter], is dropped instead of reaching the `emit` or
+/// `add` that triggered it.
+///
 /// The [InspectModeCubit] of the inspector itself is never recorded.
 class BugInspectorBlocObserver extends BlocObserver {
   /// Creates an observer that writes into [recorder].
@@ -116,20 +124,29 @@ class BugInspectorBlocObserver extends BlocObserver {
     String? eventType,
     String? errorType,
   }) {
-    if (!_accepts(bloc)) return;
-    recorder.add(
-      BugStateRecord(
-        timestampUtc: recorder.nowUtc(),
-        kind: kind,
-        blocType: bloc.runtimeType.toString(),
-        instanceId: BugStateRecorder.instanceIdOf(bloc),
-        stateType: stateType,
-        fromStateType: fromStateType,
-        toStateType: toStateType,
-        eventType: eventType,
-        errorType: errorType,
-      ),
-    );
+    // The observer runs inside the app's emit and add: never throw there.
+    try {
+      if (!_accepts(bloc)) return;
+      recorder.add(
+        BugStateRecord(
+          timestampUtc: recorder.nowUtc(),
+          kind: kind,
+          blocType: bloc.runtimeType.toString(),
+          instanceId: BugStateRecorder.instanceIdOf(bloc),
+          stateType: stateType,
+          fromStateType: fromStateType,
+          toStateType: toStateType,
+          eventType: eventType,
+          errorType: errorType,
+        ),
+      );
+    } catch (error) {
+      assert(() {
+        debugPrint('flutter_qa_inspector: could not record ${kind.name}: '
+            '$error');
+        return true;
+      }());
+    }
   }
 
   static String _typeOf(Object? value) => value.runtimeType.toString();
@@ -137,6 +154,7 @@ class BugInspectorBlocObserver extends BlocObserver {
   @override
   void onCreate(BlocBase<dynamic> bloc) {
     super.onCreate(bloc);
+    if (!BugInspector.enabledFromEnvironment) return;
     _record(
       bloc,
       BugStateRecordKind.created,
@@ -147,6 +165,7 @@ class BugInspectorBlocObserver extends BlocObserver {
   @override
   void onEvent(Bloc<dynamic, dynamic> bloc, Object? event) {
     super.onEvent(bloc, event);
+    if (!BugInspector.enabledFromEnvironment) return;
     _record(bloc, BugStateRecordKind.event, eventType: _typeOf(event));
   }
 
@@ -156,6 +175,7 @@ class BugInspectorBlocObserver extends BlocObserver {
     Transition<dynamic, dynamic> transition,
   ) {
     super.onTransition(bloc, transition);
+    if (!BugInspector.enabledFromEnvironment) return;
     _record(
       bloc,
       BugStateRecordKind.transition,
@@ -168,6 +188,7 @@ class BugInspectorBlocObserver extends BlocObserver {
   @override
   void onChange(BlocBase<dynamic> bloc, Change<dynamic> change) {
     super.onChange(bloc, change);
+    if (!BugInspector.enabledFromEnvironment) return;
     // A Bloc reports every change through onTransition as well.
     if (bloc is Bloc<dynamic, dynamic>) return;
     _record(
@@ -181,12 +202,14 @@ class BugInspectorBlocObserver extends BlocObserver {
   @override
   void onError(BlocBase<dynamic> bloc, Object error, StackTrace stackTrace) {
     super.onError(bloc, error, stackTrace);
+    if (!BugInspector.enabledFromEnvironment) return;
     _record(bloc, BugStateRecordKind.error, errorType: _typeOf(error));
   }
 
   @override
   void onClose(BlocBase<dynamic> bloc) {
     super.onClose(bloc);
+    if (!BugInspector.enabledFromEnvironment) return;
     _record(
       bloc,
       BugStateRecordKind.closed,

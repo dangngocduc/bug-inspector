@@ -9,7 +9,7 @@
             "cwd": "flutter_qa_inspector/example",
             "request": "launch",
             "toolArgs": [
-                "--dart-define=QA_INSPECTOR=true"
+                "--dart-define=FLUTTER_QA_INSPECTOR=true"
             ],
             "type": "dart"
         },
@@ -18,7 +18,7 @@
             "cwd": "flutter_qa_inspector/example",
             "request": "launch",
             "toolArgs": [
-                "--dart-define=QA_INSPECTOR=true"
+                "--dart-define=FLUTTER_QA_INSPECTOR=true"
             ],
             "type": "dart",
             "flutterMode": "profile"
@@ -28,7 +28,7 @@
             "cwd": "flutter_qa_inspector/example",
             "request": "launch",
             "toolArgs": [
-                "--dart-define=QA_INSPECTOR=true"
+                "--dart-define=FLUTTER_QA_INSPECTOR=true"
             ],
             "type": "dart",
             "flutterMode": "release"

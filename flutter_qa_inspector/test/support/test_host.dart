@@ -8,13 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 Future<List<BugWidgetSelection>> pumpHost(
   WidgetTester tester, {
   required Widget home,
+  bool enabled = true,
   InspectModeCubit? modeCubit,
   BugStateRecorder? recorder,
   Duration historyWindow = BugInspector.defaultHistoryWindow,
   bool disableModeOnSelection = true,
   BugSelectionTrigger selectionTrigger = BugSelectionTrigger.tapUp,
-  bool showExitButton = true,
-  BugExitButtonBuilder? exitButtonBuilder,
+  bool showLauncher = true,
   bool showPageButton = true,
   bool selectPageOnEmptyTap = false,
   BugWidgetSelectedCallback? onWidgetSelected,
@@ -23,13 +23,13 @@ Future<List<BugWidgetSelection>> pumpHost(
   await tester.pumpWidget(
     MaterialApp(
       builder: (context, child) => BugInspector(
+        enabled: enabled,
         modeCubit: modeCubit,
         stateRecorder: recorder,
         historyWindow: historyWindow,
         disableModeOnSelection: disableModeOnSelection,
         selectionTrigger: selectionTrigger,
-        showExitButton: showExitButton,
-        exitButtonBuilder: exitButtonBuilder,
+        showLauncher: showLauncher,
         showPageButton: showPageButton,
         selectPageOnEmptyTap: selectPageOnEmptyTap,
         onWidgetSelected: (widgetContext, selection) {
@@ -97,5 +97,8 @@ PaintPattern get paintsPageBorder => paints
     strokeWidth: BugInspector.defaultPageBorderWidth,
   );
 
-final Finder pageButton =
-    find.byKey(const ValueKey<String>('bug_inspector.page_button'));
+final Finder launcher = find.byKey(BugInspector.launcherKey);
+
+final Finder exitButton = find.byKey(BugInspector.exitButtonKey);
+
+final Finder pageButton = find.byKey(BugInspector.pageButtonKey);

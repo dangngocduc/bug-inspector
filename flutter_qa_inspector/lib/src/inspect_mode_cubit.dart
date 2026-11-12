@@ -12,8 +12,10 @@ enum InspectMode {
 
 /// Holds the current [InspectMode] of a [BugInspector].
 ///
-/// [BugInspector] provides its instance to the subtree, so a QA menu can call
-/// `context.read<InspectModeCubit>().enable()`.
+/// An enabled [BugInspector] provides its instance to the subtree, so a QA
+/// menu can call `BugInspector.maybeModeCubitOf(context)?.enable()`. Unlike
+/// `context.read<InspectModeCubit>()`, it returns `null` instead of throwing
+/// when the inspector is disabled.
 class InspectModeCubit extends Cubit<InspectMode> {
   /// Creates a cubit that starts in [initialMode].
   InspectModeCubit({InspectMode initialMode = InspectMode.disabled})

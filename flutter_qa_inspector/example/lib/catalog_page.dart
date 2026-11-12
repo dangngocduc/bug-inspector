@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
-import 'inspect_button.dart';
-
 enum CatalogStatus { loading, ready }
 
 enum CatalogFilter { all, favorites }
@@ -89,35 +87,62 @@ class CatalogPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocProvider<CatalogBloc>(
       create: (_) => CatalogBloc()..add(const CatalogStarted()),
-      // A Builder gives a context below the provider for context.read.
-      child: Builder(
-        builder: (context) => BugBlocScope<CatalogState>(
-          id: 'catalog_bloc',
-          bloc: context.read<CatalogBloc>(),
-          // Only fields that help diagnose a bug, as JSON values.
-          snapshotBuilder: (state) => {
-            'status': state.status.name,
-            'filter': state.filter.name,
-            'itemCount': state.items.length,
-            'visibleCount': state.visibleItems.length,
-            'favorites': state.favorites.toList()..sort(),
-          },
-          child: const _CatalogView(),
-        ),
+      // Read with the context of the scope, which is below the provider, and
+      // only when the tester selects a widget.
+      child: BugBlocScope<CatalogState>.lazy(
+        id: 'catalog_bloc',
+        readBloc: (context) => context.read<CatalogBloc>(),
+        // Only fields that help diagnose a bug, as JSON values.
+        snapshotBuilder: (state) => {
+          'status': state.status.name,
+          'filter': state.filter.name,
+          'itemCount': state.items.length,
+          'visibleCount': state.visibleItems.length,
+          'favorites': state.favorites.toList()..sort(),
+        },
+        child: const _CatalogView(),
       ),
     );
   }
 }
 
-class _CatalogView extends StatelessWidget {
+class _CatalogView extends StatefulWidget {
   const _CatalogView();
+
+  @override
+  State<_CatalogView> createState() => _CatalogViewState();
+}
+
+/// Keeps the search query, which only this screen needs, so it lives in the
+/// state instead of the bloc. BugInspectableState adds it to the bug report
+/// of the screen and of every widget this state builds.
+class _CatalogViewState extends State<_CatalogView> with BugInspectableState {
+  final _query = TextEditingController();
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  // Only called when the tester selects a widget or the screen.
+  @override
+  Object? bugSnapshot() => {'query': _query.text};
+
+  List<String> _matching(List<String> items) {
+    final query = _query.text.trim().toLowerCase();
+    if (query.isEmpty) return items;
+    return [
+      for (final item in items)
+        if (item.toLowerCase().contains(query)) item,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Danh mục'),
-        actions: const [InspectButton()],
       ),
       body: BlocBuilder<CatalogBloc, CatalogState>(
         builder: (context, state) {
@@ -130,6 +155,7 @@ class _CatalogView extends StatelessWidget {
               ),
             );
           }
+          final items = _matching(state.visibleItems);
           return Column(
             children: [
               BugInspectable(
@@ -155,11 +181,26 @@ class _CatalogView extends StatelessWidget {
                   ),
                 ),
               ),
+              BugInspectable(
+                id: 'catalog.search',
+                sourceFile: 'example/lib/catalog_page.dart',
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: TextField(
+                    controller: _query,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'Tìm sản phẩm',
+                      prefixIcon: Icon(Icons.search),
+                    ),
+                  ),
+                ),
+              ),
               Expanded(
                 child: ListView.builder(
-                  itemCount: state.visibleItems.length,
+                  itemCount: items.length,
                   itemBuilder: (context, index) {
-                    final item = state.visibleItems[index];
+                    final item = items[index];
                     final favorite = state.favorites.contains(item);
                     // The id names the widget in code, the label tells which item.
                     return BugInspectable(

@@ -28,6 +28,7 @@ class BugWidgetSelection {
     this.sourceLine,
     this.routeName,
     this.blocs = const <BugBlocSnapshot>[],
+    this.widgetStates = const <BugWidgetStateSnapshot>[],
     this.stateHistory = const <BugStateRecord>[],
   });
 
@@ -72,6 +73,12 @@ class BugWidgetSelection {
   /// An instance appears once.
   final List<BugBlocSnapshot> blocs;
 
+  /// Snapshots of the [State]s that use [BugInspectableState].
+  ///
+  /// The states inside the selected widget or page come first, in tree order,
+  /// then the states above it, nearest first.
+  final List<BugWidgetStateSnapshot> widgetStates;
+
   /// State history within [BugInspector.historyWindow] before [capturedAtUtc],
   /// oldest first.
   final List<BugStateRecord> stateHistory;
@@ -98,6 +105,9 @@ class BugWidgetSelection {
       },
       'capturedAtUtc': capturedAtUtc.toUtc().toIso8601String(),
       'blocs': <Object?>[for (final bloc in blocs) bloc.toJson()],
+      'widgetStates': <Object?>[
+        for (final widgetState in widgetStates) widgetState.toJson(),
+      ],
       'stateHistory': <Object?>[
         for (final record in stateHistory) record.toJson(),
       ],
@@ -107,7 +117,51 @@ class BugWidgetSelection {
   @override
   String toString() => 'BugWidgetSelection(${kind.name}: $id, '
       'widgetType: $widgetType, bounds: $bounds, blocs: ${blocs.length}, '
+      'widgetStates: ${widgetStates.length}, '
       'stateHistory: ${stateHistory.length})';
+}
+
+/// The fields of one [State] that uses [BugInspectableState], at the moment of
+/// the selection.
+@immutable
+class BugWidgetStateSnapshot {
+  /// Creates a snapshot.
+  const BugWidgetStateSnapshot({
+    required this.type,
+    required this.widgetType,
+    required this.state,
+    this.captureErrorType,
+  });
+
+  /// The runtime type of the state, for example `_CheckoutPageState`.
+  final String type;
+
+  /// The runtime type of the widget of the state, for example `CheckoutPage`.
+  final String widgetType;
+
+  /// The JSON value returned by [BugInspectableState.bugSnapshot], or an empty
+  /// map when the capture failed.
+  final Object? state;
+
+  /// The runtime type of the error thrown while building the snapshot, or
+  /// `null` when the capture succeeded.
+  final String? captureErrorType;
+
+  /// Whether the snapshot could not be built.
+  bool get hasCaptureError => captureErrorType != null;
+
+  /// Converts the snapshot into a JSON compatible map.
+  Map<String, Object?> toJson() => <String, Object?>{
+        'type': type,
+        'widgetType': widgetType,
+        'state': state,
+        if (captureErrorType != null) 'captureErrorType': captureErrorType,
+      };
+
+  @override
+  String toString() => 'BugWidgetStateSnapshot(type: $type, '
+      'widgetType: $widgetType, state: $state'
+      '${captureErrorType == null ? '' : ', error: $captureErrorType'})';
 }
 
 /// The state of one BLoC/Cubit instance at the moment of the selection.
@@ -252,8 +306,9 @@ class BugStateRecord {
   String toString() => 'BugStateRecord(${toJson()})';
 }
 
-/// Thrown when a [BugBlocScope.snapshotBuilder] returns a value that is not
-/// JSON compatible.
+/// Thrown when a [BugBlocScope.snapshotBuilder] or a
+/// [BugInspectableState.bugSnapshot] returns a value that is not JSON
+/// compatible.
 class BugSnapshotFormatException implements Exception {
   /// Creates the exception for the value found at [path].
   const BugSnapshotFormatException(this.path, this.message);

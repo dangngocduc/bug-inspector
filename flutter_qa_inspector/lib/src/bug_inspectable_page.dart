@@ -27,8 +27,9 @@ part of '../flutter_qa_inspector.dart';
 /// )
 /// ```
 ///
-/// Outside a [BugInspector] this widget simply returns [child].
-class BugInspectablePage extends StatefulWidget
+/// Without `--dart-define=FLUTTER_QA_INSPECTOR=true`, or outside an enabled
+/// [BugInspector], this widget only returns [child] and registers nothing.
+class BugInspectablePage extends StatelessWidget
     implements _InspectableNodeWidget {
   /// Creates a page marker around [child].
   const BugInspectablePage({
@@ -74,20 +75,15 @@ class BugInspectablePage extends StatefulWidget
   final Widget child;
 
   @override
-  State<BugInspectablePage> createState() => _BugInspectablePageState();
+  Widget build(BuildContext context) {
+    // A constant: without the define, the compiler drops the node.
+    if (!BugInspector.enabledFromEnvironment) return child;
+    return _InspectableNodeHost(node: this, kind: BugSelectionKind.page);
+  }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     _debugFillNodeProperties(this, properties);
   }
-}
-
-class _BugInspectablePageState extends State<BugInspectablePage>
-    with _InspectableNodeState<BugInspectablePage> {
-  @override
-  BugSelectionKind get _kind => BugSelectionKind.page;
-
-  @override
-  _InspectableNodeWidget get _node => widget;
 }

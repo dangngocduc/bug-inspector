@@ -4,8 +4,10 @@ part of '../flutter_qa_inspector.dart';
 /// [BugInspector] is in [InspectMode.selecting].
 ///
 /// While selecting, a border is painted on top of [child]. The border does not
-/// change the size, padding or hit testing of [child]. Outside a
-/// [BugInspector] this widget simply returns [child].
+/// change the size, padding or hit testing of [child].
+///
+/// Without `--dart-define=FLUTTER_QA_INSPECTOR=true`, or outside an enabled
+/// [BugInspector], this widget only returns [child] and registers nothing.
 ///
 /// Use a stable [id] such as `home.quick_add_water` and a [sourceFile]
 /// relative to the repository root.
@@ -15,7 +17,7 @@ part of '../flutter_qa_inspector.dart';
 /// item builder.
 ///
 /// To make a whole screen selectable, use [BugInspectablePage].
-class BugInspectable extends StatefulWidget implements _InspectableNodeWidget {
+class BugInspectable extends StatelessWidget implements _InspectableNodeWidget {
   /// Creates an inspectable wrapper around [child].
   const BugInspectable({
     super.key,
@@ -58,22 +60,17 @@ class BugInspectable extends StatefulWidget implements _InspectableNodeWidget {
   final Widget child;
 
   @override
-  State<BugInspectable> createState() => _BugInspectableState();
+  Widget build(BuildContext context) {
+    // A constant: without the define, the compiler drops the node.
+    if (!BugInspector.enabledFromEnvironment) return child;
+    return _InspectableNodeHost(node: this, kind: BugSelectionKind.widget);
+  }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     _debugFillNodeProperties(this, properties);
   }
-}
-
-class _BugInspectableState extends State<BugInspectable>
-    with _InspectableNodeState<BugInspectable> {
-  @override
-  BugSelectionKind get _kind => BugSelectionKind.widget;
-
-  @override
-  _InspectableNodeWidget get _node => widget;
 }
 
 /// What [BugInspectable] and [BugInspectablePage] have in common.
@@ -98,15 +95,24 @@ void _debugFillNodeProperties(
     ..add(IntProperty('sourceLine', node.sourceLine, defaultValue: null));
 }
 
-/// Any registered [BugInspectable] or [BugInspectablePage] state.
-typedef _InspectableNode = _InspectableNodeState<StatefulWidget>;
+/// The running part of a [BugInspectable] or [BugInspectablePage], only
+/// built when the inspector is compiled in.
+class _InspectableNodeHost extends StatefulWidget {
+  const _InspectableNodeHost({required this.node, required this.kind});
+
+  final _InspectableNodeWidget node;
+  final BugSelectionKind kind;
+
+  @override
+  State<_InspectableNodeHost> createState() => _InspectableNode();
+}
 
 /// Registers the node with the nearest [BugInspector], paints its border and
 /// captures its selection.
-mixin _InspectableNodeState<W extends StatefulWidget> on State<W> {
-  BugSelectionKind get _kind;
+class _InspectableNode extends State<_InspectableNodeHost> {
+  BugSelectionKind get _kind => widget.kind;
 
-  _InspectableNodeWidget get _node;
+  _InspectableNodeWidget get _node => widget.node;
 
   bool get _isPage => _kind == BugSelectionKind.page;
 
@@ -155,12 +161,24 @@ mixin _InspectableNodeState<W extends StatefulWidget> on State<W> {
   /// The name shown on the page button: the label, or the id.
   String get _displayName => _node.label ?? _node.id;
 
+  /// The context of the [BugInspectable] or [BugInspectablePage] itself, the
+  /// parent of this node.
+  BuildContext get _markerContext {
+    BuildContext marker = context;
+    context.visitAncestorElements((parent) {
+      marker = parent;
+      return false;
+    });
+    return marker;
+  }
+
   BugWidgetSelection _createSelection({
     required Rect bounds,
     required DateTime capturedAtUtc,
     required List<BugStateRecord> stateHistory,
   }) {
     final node = _node;
+    final context = _markerContext;
     return BugWidgetSelection(
       kind: _kind,
       id: node.id,
@@ -172,6 +190,7 @@ mixin _InspectableNodeState<W extends StatefulWidget> on State<W> {
       bounds: bounds,
       capturedAtUtc: capturedAtUtc,
       blocs: _captureBlocSnapshots(context, includeDescendants: _isPage),
+      widgetStates: _captureWidgetStates(context),
       stateHistory: stateHistory,
     );
   }
