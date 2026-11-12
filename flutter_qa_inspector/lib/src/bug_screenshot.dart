@@ -45,6 +45,54 @@ class BugScreenshot {
     );
   }
 
+  /// Encodes this image with [annotations] drawn on it as a PNG.
+  ///
+  /// Each rectangle is stroked with [color], [strokeWidth] logical pixels wide
+  /// (`strokeWidth * pixelRatio` image pixels), like in a
+  /// [BugScreenshotEditor] shown at the size of the app. Returns [pngBytes]
+  /// when there are no annotations, and without
+  /// `--dart-define=FLUTTER_QA_INSPECTOR=true`.
+  Future<Uint8List> toAnnotatedPng(
+    Iterable<BugScreenshotAnnotation> annotations, {
+    Color color = BugScreenshotEditor.defaultColor,
+    double strokeWidth = BugScreenshotEditor.defaultStrokeWidth,
+  }) async {
+    if (!BugInspector.enabledFromEnvironment) return pngBytes;
+    final rects = <Rect>[for (final annotation in annotations) annotation.rect];
+    if (rects.isEmpty) return pngBytes;
+
+    final codec = await ui.instantiateImageCodec(pngBytes);
+    ui.Image? source;
+    ui.Image? annotated;
+    try {
+      source = (await codec.getNextFrame()).image;
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder)..drawImage(source, Offset.zero, Paint());
+      final stroke = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth * pixelRatio;
+      for (final rect in rects) {
+        canvas.drawRect(rect, stroke);
+      }
+      final picture = recorder.endRecording();
+      try {
+        annotated = await picture.toImage(source.width, source.height);
+      } finally {
+        picture.dispose();
+      }
+      final data = await annotated.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) {
+        throw StateError('The annotated screenshot could not be encoded.');
+      }
+      return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+    } finally {
+      source?.dispose();
+      annotated?.dispose();
+      codec.dispose();
+    }
+  }
+
   /// Describes the image without its bytes.
   Map<String, Object?> toJson() => <String, Object?>{
         'width': width,

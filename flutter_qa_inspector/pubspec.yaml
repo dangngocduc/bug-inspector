@@ -3,7 +3,7 @@ description: >-
   QA-build inspector that lets testers pick a widget or a whole screen and
   attach its info, BLoC/Cubit state snapshots and a recent state timeline to a
   bug report.
-version: 0.5.0
+version: 0.6.0
 publish_to: none
 
 environment:

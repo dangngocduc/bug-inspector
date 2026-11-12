@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
+import 'screenshot_annotation_page.dart';
+
 /// A demo bug report form. A real app would send [report] to its tracker.
 class BugReportSheet extends StatefulWidget {
   const BugReportSheet({super.key, required this.selection, this.screenshot});
@@ -18,9 +20,13 @@ class BugReportSheet extends StatefulWidget {
 class _BugReportSheetState extends State<BugReportSheet> {
   final _description = TextEditingController();
 
+  /// The rectangles the tester drew on the screenshot.
+  final _annotations = BugScreenshotAnnotationController();
+
   @override
   void dispose() {
     _description.dispose();
+    _annotations.dispose();
     super.dispose();
   }
 
@@ -28,8 +34,40 @@ class _BugReportSheetState extends State<BugReportSheet> {
         'description': _description.text,
         'inspector': widget.selection.toJson(),
         if (widget.screenshot != null)
-          'screenshot': widget.screenshot!.toJson(),
+          'screenshot': {
+            ...widget.screenshot!.toJson(),
+            'annotations': _annotations.toJson(),
+          },
       };
+
+  /// The selected widget, outlined on the screenshot. A whole screen is not
+  /// outlined: it is the whole image.
+  Rect? get _highlight => widget.selection.kind == BugSelectionKind.widget
+      ? widget.selection.bounds
+      : null;
+
+  void _annotate() {
+    final screenshot = widget.screenshot;
+    if (screenshot == null) return;
+    ScreenshotAnnotationPage.open(
+      context,
+      screenshot: screenshot,
+      controller: _annotations,
+      highlight: _highlight,
+    );
+  }
+
+  Future<void> _send() async {
+    final screenshot = widget.screenshot;
+    // A real app uploads this image, with the tester's rectangles drawn on
+    // it, together with [report].
+    final png = screenshot == null
+        ? null
+        : await screenshot.toAnnotatedPng(_annotations.annotations);
+    debugPrint('Bug report: ${jsonEncode(report)}, '
+        'screenshot: ${png?.length ?? 0} bytes');
+    if (mounted) Navigator.of(context).pop();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +101,25 @@ class _BugReportSheetState extends State<BugReportSheet> {
               if (screenshot != null) ...[
                 _ScreenshotPreview(
                   screenshot: screenshot,
-                  highlight: selection.bounds,
+                  annotations: _annotations,
+                  highlight: _highlight,
+                  onTap: _annotate,
+                ),
+                const SizedBox(height: 8),
+                ListenableBuilder(
+                  listenable: _annotations,
+                  builder: (context, _) {
+                    final count = _annotations.annotations.length;
+                    return Text(
+                      count == 0
+                          ? 'Chạm vào ảnh để đánh dấu vùng lỗi'
+                          : 'Đã đánh dấu $count vùng · Chạm vào ảnh để sửa',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 16),
               ],
@@ -108,7 +164,7 @@ class _BugReportSheetState extends State<BugReportSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: FilledButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: _send,
                       child: const Text('Gửi'),
                     ),
                   ),
@@ -122,44 +178,34 @@ class _BugReportSheetState extends State<BugReportSheet> {
   }
 }
 
-/// Shows the screenshot with the selected bounds outlined.
+/// Shows the screenshot with the selected widget and the tester's
+/// rectangles. Tapping the image opens the editor.
 class _ScreenshotPreview extends StatelessWidget {
-  const _ScreenshotPreview({required this.screenshot, required this.highlight});
+  const _ScreenshotPreview({
+    required this.screenshot,
+    required this.annotations,
+    required this.highlight,
+    required this.onTap,
+  });
 
   final BugScreenshot screenshot;
-  final Rect highlight;
+  final BugScreenshotAnnotationController annotations;
+  final Rect? highlight;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final imageRect = screenshot.toImageRect(highlight);
     return Center(
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxHeight: 280),
-        child: AspectRatio(
-          aspectRatio: screenshot.width / screenshot.height,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final scale = constraints.maxWidth / screenshot.width;
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  Image.memory(screenshot.pngBytes, fit: BoxFit.fill),
-                  Positioned.fromRect(
-                    rect: Rect.fromLTWH(
-                      imageRect.left * scale,
-                      imageRect.top * scale,
-                      imageRect.width * scale,
-                      imageRect.height * scale,
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.red, width: 2),
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onTap,
+          child: BugScreenshotEditor(
+            screenshot: screenshot,
+            controller: annotations,
+            highlight: highlight,
+            readOnly: true,
           ),
         ),
       ),

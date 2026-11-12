@@ -1,3 +1,20 @@
+## 0.6.0
+
+- `BugScreenshotEditor` lets the tester mark a `BugScreenshot` with
+  rectangles: drag on the image to draw one, tap one to select it, drag it to
+  move it, drag a corner handle to resize it, and tap the button next to it
+  to delete it. Rectangles stay inside the image. `readOnly` shows them
+  without gestures, and `highlight` outlines the selected widget with a dashed
+  line. A touch that starts on the editor is never a scroll of an enclosing
+  list.
+- `BugScreenshotAnnotationController` holds the rectangles
+  (`BugScreenshotAnnotation`, in image pixels) and the selection, with
+  `toJson()` for the report.
+- `BugScreenshot.toAnnotatedPng` encodes the screenshot with the rectangles
+  drawn on it.
+- Without the define, the editor builds an empty box and `toAnnotatedPng`
+  returns `pngBytes`.
+
 ## 0.5.0
 
 - `BugInspectableState`, a mixin for `State`: `bugSnapshot()` returns the
