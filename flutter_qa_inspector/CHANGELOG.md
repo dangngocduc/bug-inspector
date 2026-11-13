@@ -7,6 +7,9 @@
     into `FlutterQaInspector.networkRecorder`, read at every request.
     `filter:` leaves calls out. It never changes or fails a call, and records
     nothing without the define.
+  - A bug report includes at most the 10 newest calls
+    (`BugNetworkRecorder.maxReportRecords`, `defaultMaxReportRecords`); the
+    API call history still lists every kept call.
   - `BugNetworkRecorder`: the newest 100 calls in memory (`maxRecords`), text
     and JSON bodies cut after 16384 characters (`maxBodyLength`). Values of
     `redactedHeaders` (`Authorization`, `Cookie`, `Set-Cookie`, ...) and of

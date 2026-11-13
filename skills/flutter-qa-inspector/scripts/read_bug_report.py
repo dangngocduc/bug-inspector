@@ -17,6 +17,8 @@ KNOWN_ENTRIES = (*REQUIRED_ENTRIES, "screenshot.png")
 MAX_FILE_BYTES = 64 * 1024 * 1024
 # The manifest lists at most this many notable API calls; read the JSON for all.
 MAX_NOTABLE_CALLS = 20
+# BugNetworkRecorder.defaultMaxReportRecords: a report keeps the newest calls.
+DEFAULT_MAX_REPORT_RECORDS = 10
 
 
 def reject_non_finite(value):
@@ -171,6 +173,12 @@ def read_report(archive, output_dir=None):
     if isinstance(network, list):
         snapshot_counts["network"] = len(network)
         network_summary = summarize_network(network, warnings)
+        if len(network) >= DEFAULT_MAX_REPORT_RECORDS:
+            warnings.append(
+                f"inspector.network has {len(network)} calls: a report keeps only "
+                "the newest maxReportRecords calls (10 by default), older calls "
+                "may be missing"
+            )
     elif "network" in inspector:
         snapshot_counts["network"] = None
         warnings.append("inspector.network is not a list")

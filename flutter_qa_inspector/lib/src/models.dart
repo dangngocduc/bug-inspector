@@ -92,9 +92,11 @@ class BugWidgetSelection {
   /// oldest first.
   final List<BugStateRecord> stateHistory;
 
-  /// The API calls kept by [BugInspector.networkRecorder] at [capturedAtUtc],
-  /// within [BugInspector.networkHistoryWindow], in the order they started,
-  /// oldest first. A call still running is [BugNetworkRecordStatus.pending].
+  /// The newest API calls kept by [BugInspector.networkRecorder] at
+  /// [capturedAtUtc], at most [BugNetworkRecorder.maxReportRecords] (10 by
+  /// default), within [BugInspector.networkHistoryWindow], in the order they
+  /// started, oldest first. A call still running is
+  /// [BugNetworkRecordStatus.pending].
   ///
   /// Like [stateHistory], it holds the calls of the whole app, not only those
   /// of the selected widget.

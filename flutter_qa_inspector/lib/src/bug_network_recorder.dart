@@ -246,11 +246,16 @@ class BugNetworkRecorder with ChangeNotifier {
   BugNetworkRecorder({
     this.maxRecords = defaultMaxRecords,
     this.maxBodyLength = defaultMaxBodyLength,
+    this.maxReportRecords = defaultMaxReportRecords,
     Set<String> redactedHeaders = defaultRedactedHeaders,
     Set<String> redactedFields = defaultRedactedFields,
     DateTime Function()? clock,
   })  : assert(maxRecords > 0, 'maxRecords must be greater than zero'),
         assert(maxBodyLength >= 0, 'maxBodyLength must not be negative'),
+        assert(
+          maxReportRecords >= 0,
+          'maxReportRecords must not be negative',
+        ),
         redactedHeaders = Set<String>.unmodifiable(
           <String>{for (final name in redactedHeaders) name.toLowerCase()},
         ),
@@ -264,6 +269,9 @@ class BugNetworkRecorder with ChangeNotifier {
 
   /// The default value of [maxBodyLength].
   static const int defaultMaxBodyLength = 16 * 1024;
+
+  /// The default value of [maxReportRecords].
+  static const int defaultMaxReportRecords = 10;
 
   /// What replaces a redacted value.
   static const String redactedValue = 'REDACTED';
@@ -310,6 +318,14 @@ class BugNetworkRecorder with ChangeNotifier {
   /// The maximum number of characters kept of a text or JSON body. `0` keeps
   /// no content, only the size.
   final int maxBodyLength;
+
+  /// The maximum number of calls a selection, and so a bug report, includes:
+  /// the newest ones, see [reportRecords]. `0` leaves the calls out of the
+  /// reports.
+  ///
+  /// It only limits the reports: the recorder keeps up to [maxRecords] calls,
+  /// and [BugNetworkHistoryPage] lists all of them.
+  final int maxReportRecords;
 
   /// The headers whose values are replaced by [redactedValue], lower case.
   final Set<String> redactedHeaders;
@@ -363,6 +379,16 @@ class BugNetworkRecorder with ChangeNotifier {
             !record.startedAtUtc.isAfter(now) &&
             (cutoff == null || !(record.endedAtUtc ?? now).isBefore(cutoff)),
       ),
+    );
+  }
+
+  /// The calls a bug report includes: the newest [maxReportRecords] of
+  /// [recordsSince], oldest first.
+  List<BugNetworkRecord> reportRecords(Duration? window, {DateTime? nowUtc}) {
+    final records = recordsSince(window, nowUtc: nowUtc);
+    if (records.length <= maxReportRecords) return records;
+    return List<BugNetworkRecord>.unmodifiable(
+      records.sublist(records.length - maxReportRecords),
     );
   }
 

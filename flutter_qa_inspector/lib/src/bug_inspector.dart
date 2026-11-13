@@ -197,7 +197,8 @@ class BugInspector extends StatelessWidget {
 
   /// How far back [BugWidgetSelection.network] goes: the calls that ended
   /// within it, and the calls still running. Every call the recorder keeps
-  /// (at most [BugNetworkRecorder.maxRecords]) when `null`, the default.
+  /// when `null`, the default. Either way, a selection has at most the newest
+  /// [BugNetworkRecorder.maxReportRecords] calls (10 by default).
   final Duration? networkHistoryWindow;
 
   /// The texts of the **Inspect network** toolbar button
@@ -438,7 +439,7 @@ class _BugInspectorState extends State<_BugInspectorHost> {
             nowUtc: capturedAtUtc);
     final network = networkRecorder == null
         ? const <BugNetworkRecord>[]
-        : networkRecorder.recordsSince(_inspector.networkHistoryWindow,
+        : networkRecorder.reportRecords(_inspector.networkHistoryWindow,
             nowUtc: capturedAtUtc);
     final node = candidate.node;
     final selection = node._createSelection(

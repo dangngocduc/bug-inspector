@@ -50,6 +50,40 @@ void main() {
       );
     });
 
+    test('a report has the newest maxReportRecords calls, oldest first', () {
+      final now = DateTime.utc(2026, 11, 13, 10);
+      List<String> ids(BugNetworkRecorder recorder, [Duration? window]) =>
+          recorder.reportRecords(window).map((record) => record.id).toList();
+      BugNetworkRecorder filled(BugNetworkRecorder recorder) {
+        for (var i = 1; i <= 12; i++) {
+          recorder.add(
+            _record(
+              '$i',
+              endedAt: now.subtract(Duration(minutes: 12 - i)),
+            ),
+          );
+        }
+        return recorder;
+      }
+
+      final byDefault = filled(BugNetworkRecorder(clock: () => now));
+      expect(BugNetworkRecorder.defaultMaxReportRecords, 10);
+      expect(byDefault.length, 12);
+      expect(ids(byDefault), [for (var i = 3; i <= 12; i++) '$i']);
+      // The window applies first: fewer calls than the limit.
+      expect(ids(byDefault, const Duration(minutes: 2)), ['10', '11', '12']);
+
+      final three =
+          filled(BugNetworkRecorder(maxReportRecords: 3, clock: () => now));
+      expect(ids(three), ['10', '11', '12']);
+      // The history keeps every call.
+      expect(three.records, hasLength(12));
+
+      final none =
+          filled(BugNetworkRecorder(maxReportRecords: 0, clock: () => now));
+      expect(ids(none), isEmpty);
+    });
+
     test('toJson has the request, the response and the error', () {
       final record = BugNetworkRecord(
         id: '00002a',
@@ -417,6 +451,30 @@ void main() {
         FlutterQaInspector.networkRecorder!.records.map((record) => record.url),
         ['https://api.example.com/late'],
       );
+    });
+
+    testWidgets('a selection has at most maxReportRecords calls',
+        (tester) async {
+      final recorder = BugNetworkRecorder(maxReportRecords: 2, clock: () => now)
+        ..add(_record('a', endedAt: now))
+        ..add(_record('b', endedAt: now))
+        ..add(_record('c'));
+      final selections = await pumpHost(
+        tester,
+        networkRecorder: recorder,
+        home: Scaffold(
+          body: Center(child: BugInspectable(id: 'button', child: box(80, 40))),
+        ),
+      );
+
+      await enable(tester);
+      await tapCenterOf(tester, inspectable('button'));
+
+      expect(
+        selections.single.network.map((record) => record.id),
+        ['b', 'c'],
+      );
+      expect(selections.single.toJson()['network'], hasLength(2));
     });
 
     testWidgets('a selection captures the calls of the recorder',

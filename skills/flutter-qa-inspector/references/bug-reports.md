@@ -82,7 +82,7 @@ Từ root skill, chạy:
 python3 scripts/read_bug_report.py /path/to/bug_report.zip
 ```
 
-Helper tạo thư mục tạm riêng, chỉ ghi ba entry được nhận diện vào tên cố định, không ghi đè file có sẵn. Có thể chỉ định thư mục mới bằng `--output-dir /tmp/qa-report-case-123`. Kết quả stdout là JSON manifest chứa đường dẫn tuyệt đối, selection metadata, counts, warnings và `network` (từ `0.10.0`: `by_status`, `truncated_bodies`, tối đa 20 `notable_calls` failed/pending/status `>= 400` với URL đã bỏ query; `null` khi report không có `inspector.network`); **manifest không thay thế nội dung report**, đọc headers/body của call trong `inspector.json`.
+Helper tạo thư mục tạm riêng, chỉ ghi ba entry được nhận diện vào tên cố định, không ghi đè file có sẵn. Có thể chỉ định thư mục mới bằng `--output-dir /tmp/qa-report-case-123`. Kết quả stdout là JSON manifest chứa đường dẫn tuyệt đối, selection metadata, counts, warnings và `network` (từ `0.10.0`: `by_status`, `truncated_bodies`, tối đa 20 `notable_calls` failed/pending/status `>= 400` với URL đã bỏ query; warning khi report có từ 10 call trở lên, tức đã chạm giới hạn mặc định và có thể thiếu call cũ hơn; `null` khi report không có `inspector.network`); **manifest không thay thế nội dung report**, đọc headers/body của call trong `inspector.json`.
 
 Đọc toàn bộ file mô tả/payload từ các đường dẫn trả về và mở ảnh bằng công cụ xem ảnh đang có. Nếu không xem được ảnh, nói rõ phân tích visual còn thiếu; không khẳng định đã xem hoặc chỉ dựa trên OCR. Không tự tạo ảnh thay thế. PNG đã có các đường đánh dấu, không phải ảnh gốc chưa annotation; export page thường không có viền highlight quanh toàn page.
 
@@ -100,7 +100,7 @@ Helper báo lỗi với ZIP hỏng, thiếu entry bắt buộc, JSON không có 
 
 ## Network (API call)
 
-Mỗi phần tử `inspector.network[]` là một call Dio, theo thứ tự bắt đầu (cũ trước), gồm các call của **toàn app** recorder còn giữ lúc chọn, không riêng widget được chọn. Form hiển thị ngược lại (mới nhất trước).
+Mỗi phần tử `inspector.network[]` là một call Dio, theo thứ tự bắt đầu (cũ trước), gồm tối đa `maxReportRecords` (mặc định 10) call **mới nhất** của **toàn app** recorder còn giữ lúc chọn, không riêng widget được chọn. Đủ 10 call thường nghĩa là các call cũ hơn đã bị lược khỏi report: call gây lỗi có thể nằm ngoài danh sách; khi cần, nhờ tester mở **Inspect network** (lịch sử đầy đủ trên máy) hoặc tăng `maxReportRecords`. Form hiển thị ngược lại (mới nhất trước).
 
 | Field | Ý nghĩa |
 | --- | --- |
@@ -117,7 +117,7 @@ Cách diễn giải:
 
 - `REDACTED` là do package che giá trị (header auth/cookie, field `password`, `token`, `otp`...), không phải giá trị thật app gửi/nhận; không kết luận token rỗng/sai từ đó. Không cố khôi phục hoặc yêu cầu user cung cấp secret.
 - Body có thể còn dữ liệu cá nhân chưa được che. Khi trích dẫn cho user, chỉ trích field liên quan; không chép nguyên body vào issue/ticket công khai.
-- `network` rỗng có thể vì app không gọi API, host chưa thêm interceptor cho client đó, `filter` loại endpoint, call bị cache interceptor trả lời trước, hoặc call cũ đã bị đẩy khỏi queue (mặc định 100). Không kết luận "không có request" chỉ từ list rỗng.
+- `network` rỗng có thể vì app không gọi API, host chưa thêm interceptor cho client đó, `filter` loại endpoint, call bị cache interceptor trả lời trước, call cũ đã bị đẩy khỏi queue (mặc định 100), hoặc host đặt `maxReportRecords: 0`. Không kết luận "không có request" chỉ từ list rỗng.
 - Chỉ có call qua Dio có interceptor; `http`, `HttpClient`, WebSocket, SDK native (Firebase...) không có trong report.
 - Retry bằng `dio.fetch` tạo record riêng: nhiều call giống nhau liên tiếp có thể là retry, không nhất thiết là gọi trùng.
 - Snapshot network lấy lúc chọn: response về sau thời điểm chọn không có trong report.

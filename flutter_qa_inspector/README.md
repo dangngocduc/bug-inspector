@@ -328,7 +328,7 @@ The accessor returns `null` without an enabled host, including production builds
 | `stateRecorder` | `null` | Use the same instance as the observer. |
 | `historyWindow` | 30 seconds | Time window included in `stateHistory`. |
 | `networkRecorder` | `null` | Use the same instance as the `BugInspectorDioInterceptor`. Without it, `network` is empty. |
-| `networkHistoryWindow` | `null` | Calls that ended within this window, plus running calls, are included in `network`. `null` includes every kept call. |
+| `networkHistoryWindow` | `null` | Calls that ended within this window, plus running calls, are included in `network`. `null` includes every kept call. Either way, `network` has at most the newest `BugNetworkRecorder.maxReportRecords` calls. |
 | `strings` | `null` | Texts of the **Inspect network** button and the API call history; `BugReportStrings.of(context)` when `null`. The facade passes its `strings:`. |
 | `disableModeOnSelection` | `true` | If `false`, disable mode before capturing or opening a form below the overlay. |
 | `selectionTrigger` | `BugSelectionTrigger.tapUp` | Selects after a confirmed tap. `tapDown` selects immediately, even before a drag. |
@@ -406,7 +406,7 @@ Selection capture and the history cutoff share `capturedAtUtc`. Example `selecti
 
 ## API calls (Dio)
 
-Only apps that use [Dio](https://pub.dev/packages/dio) are supported. `BugInspectorDioInterceptor` writes every call of a Dio client into a `BugNetworkRecorder`, and each selection copies the recorder's calls into `network`:
+Only apps that use [Dio](https://pub.dev/packages/dio) are supported. `BugInspectorDioInterceptor` writes every call of a Dio client into a `BugNetworkRecorder`, and each selection copies the newest of the recorder's calls into `network` (10 by default, see `maxReportRecords` below):
 
 ```dart
 final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
@@ -420,6 +420,7 @@ if (BugInspector.enabledFromEnvironment) {
 - Without `recorder:`, the interceptor writes into `FlutterQaInspector.networkRecorder`, read at every request, so the Dio client may be created before or after `install`. Calls made while no recorder exists are not recorded. A custom host passes the same `BugNetworkRecorder` to the interceptor (`recorder:`) and to `BugInspector.networkRecorder`.
 - `filter: (options) => ...` leaves calls out, for example health checks or endpoints whose bodies hold personal data.
 - The interceptor always passes the request, response, and error on unchanged; recording errors are dropped. It only adds `BugInspectorDioInterceptor.extraKey` to `RequestOptions.extra`.
+- A bug report includes at most the 10 newest calls (`BugNetworkRecorder(maxReportRecords:)`; `0` leaves the calls out of reports). The form's **Network** section lists those same calls. The recorder still keeps more for the API call history.
 - `BugNetworkRecorder` keeps the newest 100 calls in memory (`maxRecords`) and the first 16384 characters of each text or JSON body (`maxBodyLength`); a cut body has `truncated: true` and the full `size`. Bytes and streams keep only their size or kind; `FormData` keeps its text fields and file names, never file contents.
 - Redaction: values of `defaultRedactedHeaders` (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, ...) and of `defaultRedactedFields` (`password`, `token`, `accessToken`, `refreshToken`, `apiKey`, `otp`, `pin`, ...) in JSON bodies, form fields, and query parameters become `REDACTED`; URL user info is removed. Field names match ignoring case, `_`, and `-`. Extend the sets with `BugNetworkRecorder(redactedFields: {...BugNetworkRecorder.defaultRedactedFields, 'iban'})`, passed to `install(networkRecorder:)`. Other personal data and plain-text bodies are kept as they are.
 - `status` is `completed` (accepted response), `failed` (a `DioException`: rejected status code, timeout, connection error, cancel; the response is kept when there was one), or `pending`. A call is `pending` when it was still running at selection time, or when an interceptor added before this one ended it in `onError` (for example a retry interceptor that resolves the error). A call that an earlier interceptor answers in `onRequest` (for example from a cache) never reaches this interceptor and is not recorded. A retry with `dio.fetch` goes through the interceptor again and gets its own record.
@@ -448,7 +449,7 @@ One `network` entry:
 }
 ```
 
-`body.kind` is `json`, `text`, `bytes`, `formData`, `stream`, or `other` (only `valueType`). `response` is absent without a response, `error` without an error, `endedAtUtc` and `durationMs` while pending. Calls are those of the whole app, oldest first, not only those of the selected widget. Timestamps come from the device clock, like `capturedAtUtc`.
+`body.kind` is `json`, `text`, `bytes`, `formData`, `stream`, or `other` (only `valueType`). `response` is absent without a response, `error` without an error, `endedAtUtc` and `durationMs` while pending. Calls are the newest ones of the whole app, at most `maxReportRecords`, oldest first, not only those of the selected widget. Timestamps come from the device clock, like `capturedAtUtc`.
 
 ### API call history
 
