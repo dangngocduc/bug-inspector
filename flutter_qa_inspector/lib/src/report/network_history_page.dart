@@ -209,6 +209,9 @@ class _NetworkHistoryListState extends State<_NetworkHistoryList> {
           : ListView(
               children: [
                 CupertinoListSection.insetGrouped(
+                  hasLeading: false,
+                  dividerMargin: 16,
+                  additionalDividerMargin: 0,
                   header: _ReportSectionHeader(strings.sectionNetwork),
                   footer: _ReportSectionFooter(
                     strings.networkCount(records.length),

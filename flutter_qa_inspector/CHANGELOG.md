@@ -1,5 +1,7 @@
 ## 0.10.0
 
+- API history and report rows have explicit vertical padding, space between
+  metadata lines and before the status, and dividers aligned with the content.
 - API list rows in the history and bug report show the local response time
   (`HH:mm:ss.SSS`) below the host and duration. Errors without a response
   show the error time instead; pending calls have no end time yet.

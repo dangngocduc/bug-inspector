@@ -15,12 +15,14 @@ List<Widget> _networkTiles(
     for (final record in network.reversed)
       CupertinoListTile(
         key: ValueKey<String>('bug_report.network.${record.id}'),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         title: Text(
           '${record.method} ${_networkPath(record.url)}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         subtitle: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -32,17 +34,22 @@ List<Widget> _networkTiles(
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            if (record.endedAtUtc case final endedAt?)
+            if (record.endedAtUtc case final endedAt?) ...[
+              const SizedBox(height: 2),
               Text(
                 '${record.hasResponse || record.status == BugNetworkRecordStatus.completed ? strings.networkResponse : strings.networkError}: ${_networkLocalTime(endedAt)}',
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
+            ],
           ],
         ),
-        additionalInfo: Text(
-          _networkStatusLabel(record, strings),
-          style: TextStyle(color: _networkStatusColor(record, context)),
+        additionalInfo: Padding(
+          padding: const EdgeInsetsDirectional.only(start: 12),
+          child: Text(
+            _networkStatusLabel(record, strings),
+            style: TextStyle(color: _networkStatusColor(record, context)),
+          ),
         ),
         trailing: const CupertinoListTileChevron(),
         onTap: () => _NetworkRecordPage.open(

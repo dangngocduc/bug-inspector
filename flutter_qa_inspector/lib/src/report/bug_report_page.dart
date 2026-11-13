@@ -447,6 +447,9 @@ class _BugReportFormState extends State<_BugReportForm> {
           ),
           if (selection.network.isNotEmpty)
             CupertinoListSection.insetGrouped(
+              hasLeading: false,
+              dividerMargin: 16,
+              additionalDividerMargin: 0,
               header: _ReportSectionHeader(strings.sectionNetwork),
               footer: _ReportSectionFooter(
                 strings.networkCount(selection.network.length),
