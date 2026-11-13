@@ -1,6 +1,6 @@
 /// Lets testers pick a widget on a QA build and attach the widget info,
-/// BLoC/Cubit and widget state snapshots and a recent state timeline to a bug
-/// report.
+/// BLoC/Cubit and widget state snapshots, a recent state timeline and the API
+/// calls of a Dio client to a bug report.
 ///
 /// The quickest setup is [FlutterQaInspector]: `FlutterQaInspector.install()`
 /// before the app starts and `FlutterQaInspector.builder` as
@@ -12,8 +12,9 @@
 /// `MaterialApp.builder`),
 /// mark widgets with [BugInspectable], expose BLoC/Cubit state with
 /// [BugBlocScope], expose the parameters of the marked widget with
-/// [BugInspectableWidget], and record state history with
-/// [BugInspectorBlocObserver]. Testers can mark
+/// [BugInspectableWidget], record state history with
+/// [BugInspectorBlocObserver] and the API calls of a Dio client with
+/// [BugInspectorDioInterceptor] and a [BugNetworkRecorder]. Testers can mark
 /// parts of the [BugScreenshot] with rectangles in a [BugScreenshotEditor].
 ///
 /// The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`
@@ -30,11 +31,23 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:archive/archive.dart' show Archive, ArchiveFile, ZipEncoder;
+import 'package:dio/dio.dart'
+    show
+        DioException,
+        ErrorInterceptorHandler,
+        FormData,
+        Interceptor,
+        RequestInterceptorHandler,
+        RequestOptions,
+        Response,
+        ResponseBody,
+        ResponseInterceptorHandler;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:share_plus/share_plus.dart'
@@ -50,6 +63,7 @@ part 'src/bug_inspectable.dart';
 part 'src/bug_inspectable_page.dart';
 part 'src/bug_inspectable_widget.dart';
 part 'src/bug_inspector.dart';
+part 'src/bug_network_recorder.dart';
 part 'src/bug_screenshot.dart';
 part 'src/bug_screenshot_editor.dart';
 part 'src/bug_state_recorder.dart';
@@ -60,5 +74,8 @@ part 'src/models.dart';
 part 'src/report/bug_report_bundle.dart';
 part 'src/report/bug_report_page.dart';
 part 'src/report/bug_report_strings.dart';
+part 'src/report/json_tree.dart';
+part 'src/report/network_history_page.dart';
+part 'src/report/network_record_page.dart';
 part 'src/report/screenshot_annotation_page.dart';
 part 'src/selection_resolver.dart';

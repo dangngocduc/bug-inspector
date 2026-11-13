@@ -119,6 +119,7 @@ void main() {
 
       expect(Bloc.observer, same(previous));
       expect(FlutterQaInspector.recorder, isNull);
+      expect(FlutterQaInspector.networkRecorder, isNull);
     });
 
     test('wrap and builder return the child itself', () {
@@ -157,12 +158,15 @@ void main() {
       final observer = Bloc.observer;
 
       expect(recorder, isNotNull);
+      final networkRecorder = FlutterQaInspector.networkRecorder;
+      expect(networkRecorder, isNotNull);
       expect(observer, isA<MultiBlocObserver>());
       expect(observer, isNot(same(hostObserver)));
 
       // A second call keeps the first setup.
       FlutterQaInspector.install();
       expect(FlutterQaInspector.recorder, same(recorder));
+      expect(FlutterQaInspector.networkRecorder, same(networkRecorder));
       expect(Bloc.observer, same(observer));
 
       final cubit = _CounterCubit()..increment();
@@ -182,14 +186,20 @@ void main() {
       FlutterQaInspector.debugReset();
       expect(Bloc.observer, same(hostObserver));
       expect(FlutterQaInspector.recorder, isNull);
+      expect(FlutterQaInspector.networkRecorder, isNull);
     });
 
-    test('install takes the given recorder', () {
+    test('install takes the given recorders', () {
       final recorder = BugStateRecorder(maxRecords: 5);
-      FlutterQaInspector.install(stateRecorder: recorder);
+      final networkRecorder = BugNetworkRecorder(maxRecords: 5);
+      FlutterQaInspector.install(
+        stateRecorder: recorder,
+        networkRecorder: networkRecorder,
+      );
       addTearDown(FlutterQaInspector.debugReset);
 
       expect(FlutterQaInspector.recorder, same(recorder));
+      expect(FlutterQaInspector.networkRecorder, same(networkRecorder));
     });
 
     testWidgets('a selected widget opens the report', (tester) async {

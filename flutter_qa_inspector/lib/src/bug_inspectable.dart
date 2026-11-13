@@ -181,6 +181,7 @@ class _InspectableNode extends State<_InspectableNodeHost> {
     required Rect bounds,
     required DateTime capturedAtUtc,
     required List<BugStateRecord> stateHistory,
+    required List<BugNetworkRecord> network,
   }) {
     final node = _node;
     final context = _markerContext;
@@ -199,6 +200,7 @@ class _InspectableNode extends State<_InspectableNodeHost> {
       capturedAtUtc: capturedAtUtc,
       blocs: _captureBlocSnapshots(context, includeDescendants: _isPage),
       stateHistory: stateHistory,
+      network: network,
     );
   }
 

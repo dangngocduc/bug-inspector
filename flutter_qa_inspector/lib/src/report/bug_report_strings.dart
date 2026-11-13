@@ -10,8 +10,9 @@ part of '../../flutter_qa_inspector.dart';
 /// texts with [copyWith].
 @immutable
 class BugReportStrings {
-  /// Creates a set of texts. Every text is required, see [en] for the
-  /// English ones.
+  /// Creates a set of texts. Every text but those of the network section is
+  /// required, see [en] for the English ones. The texts of the network
+  /// section default to English.
   const BugReportStrings({
     required this.selectionHint,
     required this.pageButtonLabel,
@@ -45,6 +46,28 @@ class BugReportStrings {
     required this.annotateDeleteBox,
     required this.annotateResetZoom,
     required this.annotateInstructions,
+    this.sectionNetwork = 'Network',
+    this.networkCount = _enNetworkCount,
+    this.networkPending = 'Pending',
+    this.networkRequest = 'Request',
+    this.networkResponse = 'Response',
+    this.copyValue = 'Copy value',
+    this.networkRequestHeaders = 'Request headers',
+    this.networkRequestBody = 'Request body',
+    this.networkResponseHeaders = 'Response headers',
+    this.networkResponseBody = 'Response body',
+    this.networkError = 'Error',
+    this.networkTruncated = _enNetworkTruncated,
+    this.jsonExpandAll = 'Expand all',
+    this.jsonCollapseAll = 'Collapse all',
+    this.jsonItemCount = _enJsonItemCount,
+    this.networkHistoryTitle = 'API calls',
+    this.networkHistoryEmpty =
+        'No API calls yet. The calls of the Dio clients appear here as the app makes them.',
+    this.networkClear = 'Clear',
+    this.close = 'Close',
+    this.networkButtonLabel = 'Inspect network',
+    this.networkButtonSubtitle = _enNetworkButtonSubtitle,
   });
 
   /// The English texts, used for every locale but Vietnamese.
@@ -83,6 +106,28 @@ class BugReportStrings {
     annotateInstructions: 'Drag on the image to draw a box. Tap a box to '
         'select it, drag to move it, drag its corners to resize, tap ✕ to '
         'delete. Use two fingers to zoom.',
+    sectionNetwork: 'Network',
+    networkCount: _enNetworkCount,
+    networkPending: 'Pending',
+    networkRequest: 'Request',
+    networkResponse: 'Response',
+    copyValue: 'Copy value',
+    networkRequestHeaders: 'Request headers',
+    networkRequestBody: 'Request body',
+    networkResponseHeaders: 'Response headers',
+    networkResponseBody: 'Response body',
+    networkError: 'Error',
+    networkTruncated: _enNetworkTruncated,
+    jsonExpandAll: 'Expand all',
+    jsonCollapseAll: 'Collapse all',
+    jsonItemCount: _enJsonItemCount,
+    networkHistoryTitle: 'API calls',
+    networkHistoryEmpty:
+        'No API calls yet. The calls of the Dio clients appear here as the app makes them.',
+    networkClear: 'Clear',
+    close: 'Close',
+    networkButtonLabel: 'Inspect network',
+    networkButtonSubtitle: _enNetworkButtonSubtitle,
   );
 
   /// The Vietnamese texts.
@@ -121,6 +166,28 @@ class BugReportStrings {
     annotateInstructions: 'Kéo trên ảnh để vẽ khung. Chạm vào khung để chọn, '
         'kéo để di chuyển, kéo các góc để đổi kích thước, bấm ✕ để xóa. Dùng '
         'hai ngón tay để phóng to.',
+    sectionNetwork: 'Network',
+    networkCount: _viNetworkCount,
+    networkPending: 'Đang chờ',
+    networkRequest: 'Request',
+    networkResponse: 'Response',
+    copyValue: 'Sao chép giá trị',
+    networkRequestHeaders: 'Request headers',
+    networkRequestBody: 'Request body',
+    networkResponseHeaders: 'Response headers',
+    networkResponseBody: 'Response body',
+    networkError: 'Lỗi',
+    networkTruncated: _viNetworkTruncated,
+    jsonExpandAll: 'Mở rộng tất cả',
+    jsonCollapseAll: 'Thu gọn tất cả',
+    jsonItemCount: _viJsonItemCount,
+    networkHistoryTitle: 'Lịch sử API',
+    networkHistoryEmpty:
+        'Chưa có API call nào. Các call qua Dio sẽ hiện ở đây khi app gọi.',
+    networkClear: 'Xóa',
+    close: 'Đóng',
+    networkButtonLabel: 'Xem network',
+    networkButtonSubtitle: _viNetworkButtonSubtitle,
   );
 
   /// [vi] when the language of the nearest [Localizations] is Vietnamese,
@@ -136,6 +203,27 @@ class BugReportStrings {
       'Đã đánh dấu $count vùng · Chạm vào ảnh để sửa';
   static String _enShareSubject(String name) => 'Bug report: $name';
   static String _viShareSubject(String name) => 'Báo lỗi: $name';
+  static String _enNetworkCount(int count) =>
+      '$count API call(s), newest first · Tap a call for the details';
+  static String _viNetworkCount(int count) =>
+      '$count API call, mới nhất trước · Chạm để xem chi tiết';
+  static String _enNetworkTruncated(int shown, int total) =>
+      'Cut: the first $shown of $total characters';
+  static String _viNetworkTruncated(int shown, int total) =>
+      'Đã cắt: $shown ký tự đầu trong $total ký tự';
+  static String _enJsonItemCount(int count) =>
+      count == 1 ? '1 item' : '$count items';
+  static String _viJsonItemCount(int count) => '$count mục';
+  static String _enNetworkButtonSubtitle(int count, int failed) {
+    if (count == 0) return 'No API calls yet';
+    final calls = count == 1 ? '1 API call' : '$count API calls';
+    return failed == 0 ? calls : '$calls · $failed failed';
+  }
+
+  static String _viNetworkButtonSubtitle(int count, int failed) {
+    if (count == 0) return 'Chưa có API call';
+    return failed == 0 ? '$count API call' : '$count API call · $failed lỗi';
+  }
 
   /// The hint of the floating toolbar, see [BugInspector.selectionHint].
   final String selectionHint;
@@ -233,6 +321,69 @@ class BugReportStrings {
   /// The help text below the screenshot editor.
   final String annotateInstructions;
 
+  /// The header of the API calls recorded by [BugInspectorDioInterceptor].
+  final String sectionNetwork;
+
+  /// Below the API calls, for `count` calls.
+  final String Function(int count) networkCount;
+
+  /// The status of a call without a response or an error yet.
+  final String networkPending;
+
+  /// The header of the method, path and query of a call.
+  final String networkRequest;
+
+  /// The header of the status code and timing of a call.
+  final String networkResponse;
+
+  /// The button next to a header value that copies it.
+  final String copyValue;
+
+  /// The header of the request headers of a call.
+  final String networkRequestHeaders;
+
+  /// The header of the request body of a call.
+  final String networkRequestBody;
+
+  /// The header of the response headers of a call.
+  final String networkResponseHeaders;
+
+  /// The header of the response body of a call.
+  final String networkResponseBody;
+
+  /// The header of the error of a failed call.
+  final String networkError;
+
+  /// Below a body cut by [BugNetworkRecorder.maxBodyLength]: `shown` of `total` characters.
+  final String Function(int shown, int total) networkTruncated;
+
+  /// The button that opens every object and list of the JSON tree.
+  final String jsonExpandAll;
+
+  /// The button that closes every object and list of the JSON tree.
+  final String jsonCollapseAll;
+
+  /// Next to an object or a list of the JSON tree, for its `count` entries.
+  final String Function(int count) jsonItemCount;
+
+  /// The title of [BugNetworkHistoryPage].
+  final String networkHistoryTitle;
+
+  /// The text of [BugNetworkHistoryPage] without any call.
+  final String networkHistoryEmpty;
+
+  /// The button of [BugNetworkHistoryPage] that removes every recorded call.
+  final String networkClear;
+
+  /// The button that closes [BugNetworkHistoryPage].
+  final String close;
+
+  /// The toolbar button of [BugInspector] that opens [BugNetworkHistoryPage].
+  final String networkButtonLabel;
+
+  /// Below [networkButtonLabel]: `count` kept calls, `failed` of them failed or with a status code of 400 or more.
+  final String Function(int count, int failed) networkButtonSubtitle;
+
   /// A copy with the given texts replaced.
   BugReportStrings copyWith({
     String? selectionHint,
@@ -267,6 +418,27 @@ class BugReportStrings {
     String? annotateDeleteBox,
     String? annotateResetZoom,
     String? annotateInstructions,
+    String? sectionNetwork,
+    String Function(int count)? networkCount,
+    String? networkPending,
+    String? networkRequest,
+    String? networkResponse,
+    String? copyValue,
+    String? networkRequestHeaders,
+    String? networkRequestBody,
+    String? networkResponseHeaders,
+    String? networkResponseBody,
+    String? networkError,
+    String Function(int shown, int total)? networkTruncated,
+    String? jsonExpandAll,
+    String? jsonCollapseAll,
+    String Function(int count)? jsonItemCount,
+    String? networkHistoryTitle,
+    String? networkHistoryEmpty,
+    String? networkClear,
+    String? close,
+    String? networkButtonLabel,
+    String Function(int count, int failed)? networkButtonSubtitle,
   }) {
     return BugReportStrings(
       selectionHint: selectionHint ?? this.selectionHint,
@@ -304,6 +476,30 @@ class BugReportStrings {
       annotateDeleteBox: annotateDeleteBox ?? this.annotateDeleteBox,
       annotateResetZoom: annotateResetZoom ?? this.annotateResetZoom,
       annotateInstructions: annotateInstructions ?? this.annotateInstructions,
+      sectionNetwork: sectionNetwork ?? this.sectionNetwork,
+      networkCount: networkCount ?? this.networkCount,
+      networkPending: networkPending ?? this.networkPending,
+      networkRequest: networkRequest ?? this.networkRequest,
+      networkResponse: networkResponse ?? this.networkResponse,
+      copyValue: copyValue ?? this.copyValue,
+      networkRequestHeaders:
+          networkRequestHeaders ?? this.networkRequestHeaders,
+      networkRequestBody: networkRequestBody ?? this.networkRequestBody,
+      networkResponseHeaders:
+          networkResponseHeaders ?? this.networkResponseHeaders,
+      networkResponseBody: networkResponseBody ?? this.networkResponseBody,
+      networkError: networkError ?? this.networkError,
+      networkTruncated: networkTruncated ?? this.networkTruncated,
+      jsonExpandAll: jsonExpandAll ?? this.jsonExpandAll,
+      jsonCollapseAll: jsonCollapseAll ?? this.jsonCollapseAll,
+      jsonItemCount: jsonItemCount ?? this.jsonItemCount,
+      networkHistoryTitle: networkHistoryTitle ?? this.networkHistoryTitle,
+      networkHistoryEmpty: networkHistoryEmpty ?? this.networkHistoryEmpty,
+      networkClear: networkClear ?? this.networkClear,
+      close: close ?? this.close,
+      networkButtonLabel: networkButtonLabel ?? this.networkButtonLabel,
+      networkButtonSubtitle:
+          networkButtonSubtitle ?? this.networkButtonSubtitle,
     );
   }
 }

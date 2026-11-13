@@ -11,7 +11,7 @@ dependencies:
     # hoặc git: { url: <repo>, path: flutter_qa_inspector, ref: <tag/sha> }
 ```
 
-Contract `0.9.0` (dependencies không đổi từ `0.8.0`): Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên; không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ.
+Contract `0.10.0`: Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `dio ^5.2.0` (từ `0.10.0`, cho `BugInspectorDioInterceptor`, pure Dart), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `dio`, `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên (host Dio `<5.2.0` cần nâng lên trước); không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ.
 
 `share_plus` là plugin: native code của nó có trong mọi build của host, kể cả production. Khi host chỉ mở form qua facade, nhánh inspector/form không được gọi khi thiếu define. Báo rõ điểm này nếu host nhạy cảm với kích thước binary hoặc danh sách plugin.
 
@@ -63,14 +63,34 @@ class App extends StatelessWidget {
 }
 ```
 
-- `FlutterQaInspector.install({stateRecorder})`: thiếu define thì không làm gì. Có define thì đặt `Bloc.observer = MultiBlocObserver([observer cũ, BugInspectorBlocObserver])` một lần; gọi lại không cài thêm. `FlutterQaInspector.recorder` là recorder đó. Gọi sau khi BLoC/Cubit đã tạo thì timeline thiếu các record trước đó.
-- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)`: thiếu define thì trả nguyên `child`. Có define thì dựng `BugInspector` với recorder của `install` (hoặc `stateRecorder`), mỗi selection chụp ảnh rồi `BugReportPage.open` trên root navigator; launcher ẩn tới khi form đóng. `FlutterQaInspector.builder` là `wrap` với mặc định.
+- `FlutterQaInspector.install({stateRecorder, networkRecorder})`: thiếu define thì không làm gì. Có define thì đặt `Bloc.observer = MultiBlocObserver([observer cũ, BugInspectorBlocObserver])` và tạo `BugNetworkRecorder` một lần; gọi lại không cài thêm. `FlutterQaInspector.recorder`/`.networkRecorder` là các recorder đó. Gọi sau khi BLoC/Cubit đã tạo thì timeline thiếu các record trước đó.
+- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, networkRecorder:, strings:, captureScreenshot:, share:)`: thiếu define thì trả nguyên `child`. Có define thì dựng `BugInspector` với các recorder của `install` (hoặc `stateRecorder`/`networkRecorder` truyền vào), mỗi selection chụp ảnh rồi `BugReportPage.open` trên root navigator; launcher ẩn tới khi form đóng. `FlutterQaInspector.builder` là `wrap` với mặc định.
 - `strings`: `BugReportStringsBuilder` trả `BugReportStrings` cho cả thanh công cụ (`selectionHint`, `pageButtonLabel`), form và trang vẽ. Mặc định `BugReportStrings.of(context)`: `vi` khi locale tiếng Việt, còn lại `en`. Host có l10n riêng thì map từ hệ đó, ví dụ `strings: (context) => BugReportStrings.en.copyWith(title: S.of(context).bugReportTitle)`; không thêm chuỗi viết cứng vào widget của host.
 - `share`: `BugReportShare` (`Future<ShareResult> Function(ShareParams)`), mặc định `SharePlus.instance.share`. Dùng để upload/tạo ticket từ `params.files` (PNG, ZIP) và `params.text`; trả `ShareResultStatus.dismissed` để giữ form, trạng thái khác để đóng; lỗi ném ra hiện dialog. Package export lại `ShareParams`, `ShareResult`, `ShareResultStatus`, `XFile`.
 - Route: `BugInspectablePage.route(settings:, child:, sourceFile:)` trong `onGenerateRoute` biến mỗi route có tên thành page chọn được, xem [widget-page.md](widget-page.md).
 - `BugReportPage.routeName` là `/qa-bug-report`. Nếu host log/analytics route hoặc có route guard theo tên, loại trừ route này.
 
 Host đã có bản copy `BugReportPage`, `BugReportBundle`, `ScreenshotAnnotationPage` từ example cũ (ví dụ trong `lib/utils/debug/`) sẽ lỗi `ambiguous_import` khi nâng lên `0.8.0`: xóa các file đó, thay wrapper bằng `install`/`wrap`, đổi marker route tự viết sang `BugInspectablePage.route`, và chỉ giữ map `strings` nếu host muốn dùng l10n riêng.
+
+## Record API call (Dio)
+
+Chỉ hỗ trợ app dùng Dio. Tìm nơi host tạo `Dio` (DI/GetIt module, API client, repository); thêm interceptor vào **từng** client cần record, giữ nguyên `BaseOptions`, adapter, interceptor và error handling đang có:
+
+```dart
+final dio = Dio(BaseOptions(baseUrl: baseUrl)); // client sẵn có của host
+// ... các interceptor sẵn có (auth, logging, retry)
+if (BugInspector.enabledFromEnvironment) {
+  // Cuối cùng: thấy request đúng như gửi, kể cả header auth (đã redact).
+  dio.interceptors.add(const BugInspectorDioInterceptor());
+}
+```
+
+- Không truyền `recorder:` thì interceptor đọc `FlutterQaInspector.networkRecorder` ở mỗi request, nên client tạo trước hay sau `install()` đều được; call trước `install()` không được ghi. Host tùy chỉnh: tạo một `BugNetworkRecorder`, truyền cho `BugInspectorDioInterceptor(recorder: ...)` và `BugInspector(networkRecorder: ...)`; không tạo recorder trong `build`.
+- Dữ liệu nhạy cảm: mặc định redact header auth/cookie/API key và field `password`, `token`, `accessToken`, `refreshToken`, `apiKey`, `otp`, `pin`... trong JSON/form/query. Khi app có field riêng (số giấy tờ, số tài khoản, địa chỉ...), cấu hình qua `install`: `FlutterQaInspector.install(networkRecorder: BugNetworkRecorder(redactedFields: {...BugNetworkRecorder.defaultRedactedFields, 'idNumber'}))`. Endpoint mà body không nên vào report thì loại bằng `filter: (options) => !options.path.startsWith('/kyc')`. Body text thuần không được redact.
+- Giới hạn chỉnh được: `maxRecords` (100), `maxBodyLength` (16384 ký tự; `0` chỉ giữ size). Response lớn hơn `maxBodyLength` bị cắt thành text: report hiện body đó dạng text thay vì cây JSON. Nếu host cần xem response lớn (list dài), tăng `maxBodyLength` qua `install(networkRecorder:)` và cân nhắc kích thước `inspector.json`. Host tùy chỉnh có `networkHistoryWindow` (mặc định `null` = mọi call đang giữ).
+- Thứ tự interceptor: Dio chạy theo thứ tự add cho cả request, response và error. Interceptor đứng trước mà trả lời trong `onRequest` (cache) thì call không được ghi; resolve lỗi trong `onError` (retry) thì record là `pending`. Không đổi thứ tự interceptor của host chỉ để record nếu điều đó đổi hành vi app; nêu giới hạn này.
+- Tester xem lịch sử call bằng nút **Inspect network** trên toolbar chọn (không cần thêm UI). Menu QA riêng mở được bằng `BugNetworkHistoryPage.open(context, recorder: FlutterQaInspector.networkRecorder!)` khi recorder khác `null`, gate bằng `BugInspector.enabledFromEnvironment`. Nếu host log/guard route theo tên, loại trừ `/qa-network-history` như `/qa-bug-report`.
+- Interceptor không sửa/hủy request; chỉ thêm `BugInspectorDioInterceptor.extraKey` vào `RequestOptions.extra` (giá trị là string id).
 
 ## Host tùy chỉnh và timeline
 
@@ -121,7 +141,7 @@ void main() {
 
 `MaterialApp.router` cũng đặt host trong `builder` và giữ nguyên `routerConfig` đang có. Nếu builder cũ đã bọc child, ghép inspector quanh nội dung đó, giữ các ancestor/context mà app cần. Không thay `child` bằng page cố định; không tạo host riêng cho mỗi marker.
 
-Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHistory` rỗng nhưng `BugBlocScope` và `BugInspectableWidget` vẫn capture lúc chọn. Khi cần history, dùng cùng instance recorder ở host và observer; không tạo recorder trong `build`.
+Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHistory` rỗng nhưng `BugBlocScope` và `BugInspectableWidget` vẫn capture lúc chọn. Khi cần history, dùng cùng instance recorder ở host và observer; không tạo recorder trong `build`. Tương tự, `networkRecorder: null` cho `network` rỗng; khi cần API call, truyền cùng `BugNetworkRecorder` cho host và `BugInspectorDioInterceptor`, xem [Record API call (Dio)](#record-api-call-dio).
 
 ## Menu QA, ownership và options
 
@@ -131,7 +151,7 @@ Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHisto
 - `disableModeOnSelection` mặc định `true`: mode tắt trước callback. Nếu đặt `false`, tắt mode bằng accessor trước khi mở form hoặc chụp ảnh, nếu không overlay còn chặn tap và ảnh còn border.
 - `selectionTrigger` mặc định `BugSelectionTrigger.tapUp`; `tapDown` chọn ngay khi đặt ngón tay, kể cả trước khi kéo.
 - `historyWindow` mặc định 30 giây; `BugStateRecorder(maxRecords: ...)` kiểm soát giới hạn queue. Tăng cửa sổ không khôi phục các record đã bị queue loại.
-- Có thể chỉnh `floatingAlignment`, `selectionHint`, `pageButtonLabel`, `showPageButton`, `selectPageOnEmptyTap` và border qua host. Đưa các chuỗi tùy chỉnh theo hệ localization của app.
+- Có thể chỉnh `floatingAlignment`, `selectionHint`, `pageButtonLabel`, `showPageButton`, `selectPageOnEmptyTap` và border qua host. `strings` (`BugReportStrings`) cho text của nút **Inspect network** và màn lịch sử API; nút này chỉ hiện khi truyền `networkRecorder`. Đưa các chuỗi tùy chỉnh theo hệ localization của app.
 
 Callback nhận context của marker, thuận tiện tìm Navigator chứa widget. Khi mở báo lỗi toàn app, dùng root navigator nếu phù hợp với routing của host. Sau `await`, kiểm tra `widgetContext.mounted`. Nếu cần ảnh, [chụp trước khi mở form](screenshots.md), không tự chụp form đã mở.
 
@@ -139,7 +159,7 @@ Callback nhận context của marker, thuận tiện tìm Navigator chứa widge
 
 ## Production và kiểm tra
 
-Build production không truyền `FLUTTER_QA_INSPECTOR=true` (hoặc truyền `false`). `FlutterQaInspector.install`/`wrap` đã tự kiểm tra hằng compile-time. Với host tùy chỉnh, giữ recorder/observer và các phần QA do app tạo trong nhánh `BugInspector.enabledFromEnvironment` nếu muốn compiler bỏ chúng. Wrapper không chặn được việc evaluate đối số của app: `BugBlocScope(bloc: context.read<T>())` vẫn chạy `read` ở production, nên ưu tiên `.lazy`.
+Build production không truyền `FLUTTER_QA_INSPECTOR=true` (hoặc truyền `false`). `FlutterQaInspector.install`/`wrap` đã tự kiểm tra hằng compile-time. Với host tùy chỉnh, giữ recorder/observer, Dio interceptor và các phần QA do app tạo trong nhánh `BugInspector.enabledFromEnvironment` nếu muốn compiler bỏ chúng. Interceptor được add ngoài nhánh vẫn không ghi gì ở production, chỉ chuyển tiếp call. Wrapper không chặn được việc evaluate đối số của app: `BugBlocScope(bloc: context.read<T>())` vẫn chạy `read` ở production, nên ưu tiên `.lazy`.
 
 `BugReportPage`/`BugReportBundle` dùng trực tiếp vẫn dựng form/đóng gói ZIP khi thiếu define; gate lối mở riêng bằng `BugInspector.enabledFromEnvironment`. Không dùng số đo binary trước `0.8.0` làm bằng chứng kích thước hiện tại sau khi thêm dependency plugin.
 
@@ -153,4 +173,4 @@ flutter test --dart-define=FLUTTER_QA_INSPECTOR=true
 
 Hai lệnh test chạy các nhóm build mode khác nhau và skip nhóm còn lại. Với tích hợp chỉ ở host app, ưu tiên checks của host và các test ảnh hưởng trực tiếp.
 
-Nguồn: [main example](../../../flutter_qa_inspector/example/lib/main.dart), [app builder](../../../flutter_qa_inspector/example/lib/app.dart), [FlutterQaInspector](../../../flutter_qa_inspector/lib/src/flutter_qa_inspector_setup.dart), [BugReportPage](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart), [BugReportStrings](../../../flutter_qa_inspector/lib/src/report/bug_report_strings.dart), [host API](../../../flutter_qa_inspector/lib/src/bug_inspector.dart).
+Nguồn: [main example](../../../flutter_qa_inspector/example/lib/main.dart), [app builder](../../../flutter_qa_inspector/example/lib/app.dart), [FlutterQaInspector](../../../flutter_qa_inspector/lib/src/flutter_qa_inspector_setup.dart), [BugReportPage](../../../flutter_qa_inspector/lib/src/report/bug_report_page.dart), [BugReportStrings](../../../flutter_qa_inspector/lib/src/report/bug_report_strings.dart), [host API](../../../flutter_qa_inspector/lib/src/bug_inspector.dart), [Dio interceptor](../../../flutter_qa_inspector/lib/src/bug_network_recorder.dart), [Dio trong example](../../../flutter_qa_inspector/example/lib/demo_api.dart), [API thật + recorder tùy chỉnh](../../../flutter_qa_inspector/example/lib/jsonplaceholder_api.dart).

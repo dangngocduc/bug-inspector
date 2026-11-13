@@ -1,3 +1,63 @@
+## 0.10.0
+
+- Network: the API calls of a Dio client, request and response, are part of
+  every selection and of the bug report. Only Dio is supported.
+  - `BugInspectorDioInterceptor`: add it to the Dio client, last, inside
+    `if (BugInspector.enabledFromEnvironment)`. Without `recorder:` it writes
+    into `FlutterQaInspector.networkRecorder`, read at every request.
+    `filter:` leaves calls out. It never changes or fails a call, and records
+    nothing without the define.
+  - `BugNetworkRecorder`: the newest 100 calls in memory (`maxRecords`), text
+    and JSON bodies cut after 16384 characters (`maxBodyLength`). Values of
+    `redactedHeaders` (`Authorization`, `Cookie`, `Set-Cookie`, ...) and of
+    `redactedFields` (`password`, `token`, `accessToken`, `otp`, ...) in JSON
+    bodies, form fields and query parameters become `REDACTED`; URL user info
+    is removed.
+  - `BugNetworkRecord`, `BugNetworkRecordStatus` (`pending`, `completed`,
+    `failed`), `BugNetworkBody`, `BugNetworkBodyKind`.
+  - `FlutterQaInspector.install(networkRecorder:)` creates the recorder,
+    `FlutterQaInspector.networkRecorder` exposes it, and
+    `FlutterQaInspector.wrap(networkRecorder:)` attaches it.
+    `BugInspector.networkRecorder` and `BugInspector.networkHistoryWindow`
+    (`null`: every kept call) for a custom host.
+  - `BugWidgetSelection.network`; `inspector.json` has `inspector.network`
+    (always, possibly empty) after `stateHistory`.
+  - `BugReportPage` lists the calls in a **Network** section, newest first;
+    a tap opens the call: the path with its query parameters highlighted,
+    the request headers with a copy button per value, the request body,
+    then the status, timing, error, response headers and body, with
+    **Copy JSON** for the call. A whole JSON object or list body shows in
+    the page as a collapsible tree, built lazily, with **Expand all** and
+    **Collapse all** in its header, item counts and colors per value type;
+    it first opens as many levels as fit in 100 rows. A cut body stays
+    text. The **Payload** preview leaves `network` out;
+    the ZIP and the copied JSON have it.
+  - `BugReportStrings`: `sectionNetwork`, `networkCount`, `networkPending`,
+    `networkRequest`, `networkResponse`, `copyValue`,
+    `networkRequestHeaders`, `networkRequestBody`,
+    `networkResponseHeaders`, `networkResponseBody`, `networkError`,
+    `networkTruncated`, `jsonExpandAll`,
+    `jsonCollapseAll`, `jsonItemCount`, with `en` and `vi`. They are optional in the
+    constructor (English by default), so existing custom strings still build.
+  - API call history: while selecting, the toolbar shows **Inspect network**
+    (`BugInspector.networkButtonKey`) below **Select screen** when the host
+    has a `networkRecorder`, with the number of calls and failed calls. It
+    leaves the mode and opens `BugNetworkHistoryPage`
+    (`/qa-network-history`) on the root navigator: every kept call, newest
+    first, updated live, with call details, JSON tree and **Clear**.
+    `BugNetworkHistoryPage.open` opens it from a QA menu.
+    `BugNetworkRecorder` is now a `Listenable`. `BugInspector.strings` gives
+    the texts (`networkButtonLabel`, `networkButtonSubtitle`,
+    `networkHistoryTitle`, `networkHistoryEmpty`, `networkClear`, `close`);
+    the facade passes its own.
+- New dependency: `dio: ^5.2.0`, pure Dart.
+- Example: the catalog loads its products with Dio through a local adapter,
+  so its report lists `GET /products?page=1` with a redacted token. The
+  comments page calls the real https://jsonplaceholder.typicode.com API:
+  `GET /comments` and `GET /comments/{id}`, and a missing comment for a
+  404. The example recorder keeps bodies up to 256 KB and redacts `email`.
+  The Android main manifest declares the `INTERNET` permission.
+
 ## 0.9.0
 
 - **Breaking:** a selection describes the `child` of its marker.

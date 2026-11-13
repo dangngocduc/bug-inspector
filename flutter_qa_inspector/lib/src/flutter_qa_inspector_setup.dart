@@ -6,14 +6,20 @@ typedef BugReportStringsBuilder = BugReportStrings Function(
   BuildContext context,
 );
 
-/// The turnkey setup: the state timeline, the inspector and the ready-made
-/// [BugReportPage], in two calls.
+/// The turnkey setup: the state timeline, the API calls, the inspector and
+/// the ready-made [BugReportPage], in two calls (and one interceptor for the
+/// API calls of a Dio client).
 ///
 /// ```dart
 /// void main() {
 ///   // Before any BLoC/Cubit is created.
 ///   FlutterQaInspector.install();
 ///   runApp(const App());
+/// }
+///
+/// // Records the API calls into FlutterQaInspector.networkRecorder.
+/// if (BugInspector.enabledFromEnvironment) {
+///   dio.interceptors.add(const BugInspectorDioInterceptor());
 /// }
 ///
 /// MaterialApp(
@@ -34,24 +40,41 @@ typedef BugReportStringsBuilder = BugReportStrings Function(
 /// [BugInspector.onWidgetSelected] instead of [wrap].
 abstract final class FlutterQaInspector {
   static BugStateRecorder? _recorder;
+  static BugNetworkRecorder? _networkRecorder;
   static BlocObserver? _previousObserver;
 
   /// The recorder [install] feeds, or `null` before [install] and in builds
   /// without the define.
   static BugStateRecorder? get recorder => _recorder;
 
+  /// The recorder of the API calls that [install] creates, or `null` before
+  /// [install] and in builds without the define.
+  ///
+  /// A [BugInspectorDioInterceptor] without its own recorder writes into it,
+  /// and [wrap] attaches its calls to every selection.
+  static BugNetworkRecorder? get networkRecorder => _networkRecorder;
+
   /// Records the BLoC/Cubit state timeline: sets [Bloc.observer] to a
   /// [MultiBlocObserver] of the current observer and a
   /// [BugInspectorBlocObserver] that writes to [recorder].
   ///
+  /// Also creates the [networkRecorder] of the [BugInspectorDioInterceptor]s
+  /// of the app.
+  ///
   /// Call it once, before any BLoC/Cubit is created. Later calls do nothing.
   /// Pass [stateRecorder] to choose the recorder, for example with another
-  /// [BugStateRecorder.maxRecords].
-  static void install({BugStateRecorder? stateRecorder}) {
+  /// [BugStateRecorder.maxRecords], and [networkRecorder] to choose the
+  /// recorder of the API calls, for example with more
+  /// [BugNetworkRecorder.redactedFields].
+  static void install({
+    BugStateRecorder? stateRecorder,
+    BugNetworkRecorder? networkRecorder,
+  }) {
     // A constant: without the define, the compiler drops the rest.
     if (!BugInspector.enabledFromEnvironment || _recorder != null) return;
     final recorder = stateRecorder ?? BugStateRecorder();
     _recorder = recorder;
+    _networkRecorder = networkRecorder ?? BugNetworkRecorder();
     _previousObserver = Bloc.observer;
     Bloc.observer = MultiBlocObserver(
       observers: [
@@ -62,12 +85,13 @@ abstract final class FlutterQaInspector {
   }
 
   /// Undoes [install]: restores the previous [Bloc.observer] and forgets the
-  /// recorder.
+  /// recorders.
   @visibleForTesting
   static void debugReset() {
     final previous = _previousObserver;
     if (_recorder != null && previous != null) Bloc.observer = previous;
     _recorder = null;
+    _networkRecorder = null;
     _previousObserver = null;
   }
 
@@ -82,6 +106,8 @@ abstract final class FlutterQaInspector {
   /// * [enabled]: see [BugInspector.enabled], for example to hide the
   ///   inspector behind a QA menu switch.
   /// * [stateRecorder]: the state timeline; [recorder] when `null`.
+  /// * [networkRecorder]: the API calls; [FlutterQaInspector.networkRecorder]
+  ///   when `null`.
   /// * [strings]: the texts of the inspector and of the report;
   ///   [BugReportStrings.of] when `null`. Map them from the app's own
   ///   localization here.
@@ -91,6 +117,7 @@ abstract final class FlutterQaInspector {
     required Widget child,
     bool enabled = true,
     BugStateRecorder? stateRecorder,
+    BugNetworkRecorder? networkRecorder,
     BugReportStringsBuilder? strings,
     bool captureScreenshot = true,
     BugReportShare? share,
@@ -99,6 +126,7 @@ abstract final class FlutterQaInspector {
     return _BugReportHost(
       enabled: enabled,
       stateRecorder: stateRecorder,
+      networkRecorder: networkRecorder,
       strings: strings,
       captureScreenshot: captureScreenshot,
       share: share,
@@ -111,6 +139,7 @@ class _BugReportHost extends StatelessWidget {
   const _BugReportHost({
     required this.enabled,
     required this.stateRecorder,
+    required this.networkRecorder,
     required this.strings,
     required this.captureScreenshot,
     required this.share,
@@ -119,6 +148,7 @@ class _BugReportHost extends StatelessWidget {
 
   final bool enabled;
   final BugStateRecorder? stateRecorder;
+  final BugNetworkRecorder? networkRecorder;
   final BugReportStringsBuilder? strings;
   final bool captureScreenshot;
   final BugReportShare? share;
@@ -130,8 +160,10 @@ class _BugReportHost extends StatelessWidget {
     return BugInspector(
       enabled: enabled,
       stateRecorder: stateRecorder ?? FlutterQaInspector.recorder,
+      networkRecorder: networkRecorder ?? FlutterQaInspector.networkRecorder,
       selectionHint: texts.selectionHint,
       pageButtonLabel: texts.pageButtonLabel,
+      strings: texts,
       onWidgetSelected: (widgetContext, selection) async {
         // The inspector has already left the selecting mode: the screenshot
         // waits for a frame without borders.

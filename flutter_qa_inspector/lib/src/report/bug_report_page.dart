@@ -4,8 +4,10 @@ part of '../../flutter_qa_inspector.dart';
 /// iOS modal.
 ///
 /// The form shows the selected widget or screen, the screenshot, a
-/// description field and the inspector JSON. Tapping the screenshot opens a
-/// full screen [BugScreenshotEditor] where the tester draws rectangles.
+/// description field, the API calls of [BugWidgetSelection.network] and the
+/// inspector JSON. Tapping the screenshot opens a full screen
+/// [BugScreenshotEditor] where the tester draws rectangles, tapping a call
+/// opens its request and response.
 /// Sending zips the screenshot (with the selected widget outlined and the
 /// rectangles drawn on it), the description and the inspector JSON, then
 /// shares the screenshot, the ZIP and the description, see [BugReportBundle].
@@ -174,9 +176,11 @@ class _BugReportFormState extends State<_BugReportForm> {
   final _copied = ValueNotifier<bool>(false);
   Timer? _copiedTimer;
 
-  /// The selection does not change: its JSON is encoded once.
-  late final String _payload =
-      const JsonEncoder.withIndent('  ').convert(widget.selection.toJson());
+  /// The selection does not change: its JSON is encoded once. The API calls
+  /// have their own section, and are left out of this preview only: the
+  /// report and the copied JSON have them.
+  late final String _payload = const JsonEncoder.withIndent('  ')
+      .convert(widget.selection.toJson()..remove('network'));
 
   BugReportStrings get _strings => widget.strings;
 
@@ -441,6 +445,19 @@ class _BugReportFormState extends State<_BugReportForm> {
               ),
             ],
           ),
+          if (selection.network.isNotEmpty)
+            CupertinoListSection.insetGrouped(
+              header: _ReportSectionHeader(strings.sectionNetwork),
+              footer: _ReportSectionFooter(
+                strings.networkCount(selection.network.length),
+              ),
+              children: _networkTiles(
+                context,
+                selection.network,
+                strings,
+                backTitle: strings.title,
+              ),
+            ),
           CupertinoListSection.insetGrouped(
             header: Row(
               children: [

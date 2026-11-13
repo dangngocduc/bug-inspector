@@ -31,6 +31,7 @@ class BugWidgetSelection {
     this.routeName,
     this.blocs = const <BugBlocSnapshot>[],
     this.stateHistory = const <BugStateRecord>[],
+    this.network = const <BugNetworkRecord>[],
   });
 
   /// Whether a single widget or a whole page was selected.
@@ -91,6 +92,14 @@ class BugWidgetSelection {
   /// oldest first.
   final List<BugStateRecord> stateHistory;
 
+  /// The API calls kept by [BugInspector.networkRecorder] at [capturedAtUtc],
+  /// within [BugInspector.networkHistoryWindow], in the order they started,
+  /// oldest first. A call still running is [BugNetworkRecordStatus.pending].
+  ///
+  /// Like [stateHistory], it holds the calls of the whole app, not only those
+  /// of the selected widget.
+  final List<BugNetworkRecord> network;
+
   /// Converts the selection into a JSON compatible map.
   Map<String, Object?> toJson() {
     final source = <String, Object?>{
@@ -119,6 +128,7 @@ class BugWidgetSelection {
       'stateHistory': <Object?>[
         for (final record in stateHistory) record.toJson(),
       ],
+      'network': <Object?>[for (final record in network) record.toJson()],
     };
   }
 
@@ -126,7 +136,7 @@ class BugWidgetSelection {
   String toString() => 'BugWidgetSelection(${kind.name}: $id, '
       'widgetType: $widgetType, widgetState: $widgetState, '
       'bounds: $bounds, blocs: ${blocs.length}, '
-      'stateHistory: ${stateHistory.length})';
+      'stateHistory: ${stateHistory.length}, network: ${network.length})';
 }
 
 /// The state of one BLoC/Cubit instance at the moment of the selection.

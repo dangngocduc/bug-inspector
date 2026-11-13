@@ -146,4 +146,53 @@ void main() {
     expect(find.textContaining('"item": "Sản phẩm 2"'), findsOneWidget);
     expect(find.textContaining('"favorite": true'), findsOneWidget);
   });
+
+  testWidgets('QA flow: the report lists the API calls of the catalog',
+      skip: _needsQaBuild, (tester) async {
+    // What main.dart does: the interceptor of demoDio writes into
+    // FlutterQaInspector.networkRecorder.
+    FlutterQaInspector.install();
+    addTearDown(FlutterQaInspector.debugReset);
+    await tester.pumpWidget(
+      const ExampleApp(qaEnabled: true, captureScreenshots: false),
+    );
+    await tester.tap(find.text('Mở danh mục'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sản phẩm 1'), findsOneWidget);
+
+    await tester.tap(find.byKey(BugInspector.launcherKey));
+    await _pumpModeChange(tester);
+    await tester.tap(find.text('Select screen'));
+    await tester.pumpAndSettle();
+
+    final call = find.text('GET /products?page=1');
+    await tester.scrollUntilVisible(
+      call,
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(ListView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.text('200'), findsOneWidget);
+
+    await tester.tap(call);
+    await tester.pumpAndSettle();
+    // The fake token of demoDio is redacted.
+    expect(find.text('Authorization'), findsOneWidget);
+    expect(find.text('REDACTED'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.textContaining('"name": "Sản phẩm 1"'),
+      200,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
+  });
 }

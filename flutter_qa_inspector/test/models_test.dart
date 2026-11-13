@@ -75,6 +75,7 @@ void main() {
             'toStateType': 'int',
           },
         ],
+        'network': <Object?>[],
       });
       // The payload is encodable as is.
       expect(() => jsonEncode(selection.toJson()), returnsNormally);
@@ -113,6 +114,7 @@ void main() {
       expect(bare.containsKey('widgetStates'), isFalse);
       expect(bare['blocs'], isEmpty);
       expect(bare['stateHistory'], isEmpty);
+      expect(bare['network'], isEmpty);
     });
   });
 

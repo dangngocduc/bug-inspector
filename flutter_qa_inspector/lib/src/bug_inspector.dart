@@ -80,6 +80,9 @@ class BugInspector extends StatelessWidget {
     this.modeCubit,
     this.stateRecorder,
     this.historyWindow = defaultHistoryWindow,
+    this.networkRecorder,
+    this.networkHistoryWindow,
+    this.strings,
     this.disableModeOnSelection = true,
     this.selectionTrigger = BugSelectionTrigger.tapUp,
     this.showLauncher = true,
@@ -105,7 +108,8 @@ class BugInspector extends StatelessWidget {
   ///   around the app, no [InspectModeCubit], no registration, no extra render
   ///   object.
   /// * [BugBlocScope.lazy] never reads its bloc.
-  /// * [BugInspectorBlocObserver] records nothing.
+  /// * [BugInspectorBlocObserver] and [BugInspectorDioInterceptor] record
+  ///   nothing.
   /// * [maybeModeCubitOf] and [captureScreenshot] return `null`.
   ///
   /// It is a constant, so the compiler leaves the inspector code out of such
@@ -146,6 +150,10 @@ class BugInspector extends StatelessWidget {
   static const Key pageButtonKey =
       ValueKey<String>('bug_inspector.page_button');
 
+  /// The key of the toolbar button that opens [BugNetworkHistoryPage].
+  static const Key networkButtonKey =
+      ValueKey<String>('bug_inspector.network_button');
+
   /// Whether the inspector runs in a build where [enabledFromEnvironment] is
   /// `true`. Without the define, the inspector never runs, whatever this
   /// value.
@@ -181,6 +189,27 @@ class BugInspector extends StatelessWidget {
 
   /// How far back [BugWidgetSelection.stateHistory] goes.
   final Duration historyWindow;
+
+  /// The recorder that keeps the API calls. Pass the same instance to
+  /// [BugInspectorDioInterceptor]. When `null`, selections have an empty
+  /// [BugWidgetSelection.network].
+  final BugNetworkRecorder? networkRecorder;
+
+  /// How far back [BugWidgetSelection.network] goes: the calls that ended
+  /// within it, and the calls still running. Every call the recorder keeps
+  /// (at most [BugNetworkRecorder.maxRecords]) when `null`, the default.
+  final Duration? networkHistoryWindow;
+
+  /// The texts of the **Inspect network** toolbar button
+  /// ([BugReportStrings.networkButtonLabel],
+  /// [BugReportStrings.networkButtonSubtitle]) and of the
+  /// [BugNetworkHistoryPage] it opens. [BugReportStrings.of] when `null`.
+  ///
+  /// The button is on the selection toolbar, below the page button, when
+  /// [networkRecorder] is set. It leaves the selecting mode and opens the
+  /// history of the recorded calls on the app's root navigator; the floating
+  /// bug button hides until the history closes.
+  final BugReportStrings? strings;
 
   /// Whether to switch to [InspectMode.disabled] right after a selection,
   /// before [onWidgetSelected] is called.
@@ -399,16 +428,24 @@ class _BugInspectorState extends State<_BugInspectorHost> {
   void _capture(_InspectableCandidate candidate) {
     // Capture everything before the mode changes or a route is opened.
     final recorder = _inspector.stateRecorder;
-    final capturedAtUtc = recorder?.nowUtc() ?? DateTime.now().toUtc();
+    final networkRecorder = _inspector.networkRecorder;
+    final capturedAtUtc = recorder?.nowUtc() ??
+        networkRecorder?.nowUtc() ??
+        DateTime.now().toUtc();
     final stateHistory = recorder == null
         ? const <BugStateRecord>[]
         : recorder.recordsSince(_inspector.historyWindow,
+            nowUtc: capturedAtUtc);
+    final network = networkRecorder == null
+        ? const <BugNetworkRecord>[]
+        : networkRecorder.recordsSince(_inspector.networkHistoryWindow,
             nowUtc: capturedAtUtc);
     final node = candidate.node;
     final selection = node._createSelection(
       bounds: candidate.geometry.bounds,
       capturedAtUtc: capturedAtUtc,
       stateHistory: stateHistory,
+      network: network,
     );
     final widgetContext = node._markerContext;
 
@@ -417,9 +454,50 @@ class _BugInspectorState extends State<_BugInspectorHost> {
     if (report is Future<void>) _hideLauncherUntil(report);
   }
 
+  /// The first navigator of the app content, usually its root navigator.
+  NavigatorState? _appNavigator() {
+    NavigatorState? found;
+    void visit(Element element) {
+      if (found != null) return;
+      if (element is StatefulElement && element.state is NavigatorState) {
+        found = element.state as NavigatorState;
+        return;
+      }
+      element.visitChildren(visit);
+    }
+
+    _registry.contentKey.currentContext?.visitChildElements(visit);
+    return found;
+  }
+
+  /// Leaves the selecting mode and opens the history of the API calls.
+  void _inspectNetwork(BugReportStrings strings) {
+    final recorder = _inspector.networkRecorder;
+    if (!_modeCubit.isSelecting || recorder == null) return;
+    final navigator = _appNavigator();
+    _modeCubit.disable();
+    if (navigator == null) {
+      assert(() {
+        debugPrint('flutter_qa_inspector: no Navigator below the '
+            'BugInspector to open the API calls');
+        return true;
+      }());
+      return;
+    }
+    _hideLauncherUntil(
+      navigator.push<void>(
+        BugNetworkHistoryPage._route(recorder: recorder, strings: strings),
+      ),
+      while_: 'while showing the API calls',
+    );
+  }
+
   /// Hides the launcher until [report] completes. An error of [report] is
   /// reported to [FlutterError.onError], as it would be without the host.
-  void _hideLauncherUntil(Future<void> report) {
+  void _hideLauncherUntil(
+    Future<void> report, {
+    String while_ = 'while running onWidgetSelected',
+  }) {
     setState(() => _openReports++);
     report.then<void>(
       (_) {},
@@ -429,7 +507,7 @@ class _BugInspectorState extends State<_BugInspectorHost> {
             exception: error,
             stack: stack,
             library: 'flutter_qa_inspector',
-            context: ErrorDescription('while running onWidgetSelected'),
+            context: ErrorDescription(while_),
           ),
         );
       },
@@ -462,6 +540,8 @@ class _BugInspectorState extends State<_BugInspectorHost> {
   Widget _buildLayers(BuildContext context, {required bool selecting}) {
     final textDirection = Directionality.maybeOf(context);
     final trigger = _inspector.selectionTrigger;
+    final strings = _inspector.strings ?? BugReportStrings.of(context);
+    final networkRecorder = _inspector.networkRecorder;
     return Stack(
       fit: StackFit.passthrough,
       textDirection: textDirection ?? TextDirection.ltr,
@@ -505,6 +585,14 @@ class _BugInspectorState extends State<_BugInspectorHost> {
             onEnable: _modeCubit.enable,
             onExit: _modeCubit.disable,
             onSelectPage: _selectCurrentPage,
+            network: networkRecorder == null
+                ? null
+                : _NetworkButtonData(
+                    recorder: networkRecorder,
+                    label: strings.networkButtonLabel,
+                    subtitle: strings.networkButtonSubtitle,
+                    onPressed: () => _inspectNetwork(strings),
+                  ),
             textDirection: textDirection,
           ),
         ),
@@ -564,6 +652,23 @@ class _BugInspectorScope extends InheritedWidget {
 const Color _controlBackground = Color(0xE6202124);
 const Color _controlForeground = Color(0xFFFFFFFF);
 const Color _controlSecondary = Color(0xB3FFFFFF);
+const Color _networkButtonColor = Color(0xFF00897B);
+
+/// What the **Inspect network** button of the toolbar shows and does.
+@immutable
+class _NetworkButtonData {
+  const _NetworkButtonData({
+    required this.recorder,
+    required this.label,
+    required this.subtitle,
+    required this.onPressed,
+  });
+
+  final BugNetworkRecorder recorder;
+  final String label;
+  final String Function(int count, int failed) subtitle;
+  final VoidCallback onPressed;
+}
 
 /// The draggable control that floats above the app content: a bug button
 /// while the mode is disabled, a toolbar while selecting.
@@ -584,6 +689,7 @@ class _FloatingControl extends StatefulWidget {
     required this.onEnable,
     required this.onExit,
     required this.onSelectPage,
+    required this.network,
     required this.textDirection,
   });
 
@@ -600,6 +706,9 @@ class _FloatingControl extends StatefulWidget {
   final VoidCallback onEnable;
   final VoidCallback onExit;
   final VoidCallback onSelectPage;
+
+  /// The **Inspect network** button, `null` without a network recorder.
+  final _NetworkButtonData? network;
   final TextDirection? textDirection;
 
   @override
@@ -663,6 +772,7 @@ class _FloatingControlState extends State<_FloatingControl> {
             pageColor: widget.pageColor,
             onExit: widget.onExit,
             onSelectPage: widget.onSelectPage,
+            network: widget.network,
           )
         : _LauncherButton(onPressed: widget.onEnable);
 
@@ -746,6 +856,7 @@ class _SelectionToolbar extends StatelessWidget {
     required this.pageColor,
     required this.onExit,
     required this.onSelectPage,
+    required this.network,
   });
 
   final String hint;
@@ -754,11 +865,13 @@ class _SelectionToolbar extends StatelessWidget {
   final Color pageColor;
   final VoidCallback onExit;
   final VoidCallback onSelectPage;
+  final _NetworkButtonData? network;
 
   @override
   Widget build(BuildContext context) {
     final pageButtonLabel = this.pageButtonLabel;
     final pageName = this.pageName;
+    final network = this.network;
     return Semantics(
       container: true,
       explicitChildNodes: true,
@@ -819,63 +932,115 @@ class _SelectionToolbar extends StatelessWidget {
                 ),
                 if (pageButtonLabel != null && pageName != null) ...<Widget>[
                   const SizedBox(height: 8),
-                  Semantics(
-                    container: true,
-                    button: true,
-                    label: '$pageButtonLabel: $pageName',
-                    excludeSemantics: true,
-                    onTap: onSelectPage,
-                    child: Material(
-                      color: pageColor,
-                      borderRadius: BorderRadius.circular(12),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        key: BugInspector.pageButtonKey,
-                        onTap: onSelectPage,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-                          child: Row(
-                            children: <Widget>[
-                              const Icon(
-                                Icons.crop_free,
-                                size: 20,
-                                color: _controlForeground,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      pageButtonLabel,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: _controlForeground,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      pageName,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: _controlSecondary,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+                  _ToolbarActionButton(
+                    buttonKey: BugInspector.pageButtonKey,
+                    color: pageColor,
+                    icon: Icons.crop_free,
+                    title: pageButtonLabel,
+                    subtitle: pageName,
+                    onPressed: onSelectPage,
                   ),
                 ],
+                if (network != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  // The count follows the calls while the toolbar is open.
+                  ListenableBuilder(
+                    listenable: network.recorder,
+                    builder: (context, _) {
+                      final records = network.recorder.records;
+                      final failed = records.where((record) {
+                        final code = record.statusCode;
+                        return record.status == BugNetworkRecordStatus.failed ||
+                            (code != null && code >= 400);
+                      }).length;
+                      return _ToolbarActionButton(
+                        buttonKey: BugInspector.networkButtonKey,
+                        color: _networkButtonColor,
+                        icon: Icons.swap_vert,
+                        title: network.label,
+                        subtitle: network.subtitle(records.length, failed),
+                        onPressed: network.onPressed,
+                      );
+                    },
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A large button of the selection toolbar: an icon, a title and a
+/// subtitle on a colored background.
+class _ToolbarActionButton extends StatelessWidget {
+  const _ToolbarActionButton({
+    required this.buttonKey,
+    required this.color,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onPressed,
+  });
+
+  /// The key of the tappable area, see [BugInspector.pageButtonKey].
+  final Key buttonKey;
+  final Color color;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      button: true,
+      label: '$title: $subtitle',
+      excludeSemantics: true,
+      onTap: onPressed,
+      child: Material(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: buttonKey,
+          onTap: onPressed,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: <Widget>[
+                Icon(icon, size: 20, color: _controlForeground),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _controlForeground,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: _controlSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 
 import 'catalog_page.dart';
+import 'comments_page.dart';
 
 class CounterCubit extends Cubit<int> {
   CounterCubit() : super(0);
@@ -69,6 +70,26 @@ class CounterPage extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.list),
                   label: const Text('Mở danh mục'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              BugInspectable(
+                id: 'counter.open_comments',
+                sourceFile: 'example/lib/counter_page.dart',
+                child: OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      settings: const RouteSettings(name: '/comments'),
+                      builder: (_) => const BugInspectablePage(
+                        id: 'comments',
+                        label: 'Comments',
+                        sourceFile: 'example/lib/comments_page.dart',
+                        child: CommentsPage(),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.cloud_download_outlined),
+                  label: const Text('Comments (API thật)'),
                 ),
               ),
             ],

@@ -1,15 +1,15 @@
 # flutter_qa_inspector
 
-A Flutter inspector for QA builds. Testers can select a widget or a whole screen and attach its metadata, explicit widget parameters, BLoC/Cubit state snapshots, a recent activity timeline, and an annotated screenshot to a bug report.
+A Flutter inspector for QA builds. Testers can select a widget or a whole screen and attach its metadata, explicit widget parameters, BLoC/Cubit state snapshots, a recent activity timeline, the API calls of a Dio client (request and response), and an annotated screenshot to a bug report.
 
 The package includes `BugReportPage`: draw rectangles on a screenshot, describe the issue, then share the image and a ZIP through the platform share sheet. It does not automatically read fields from a widget's `State` or discover its BLoC dependencies; expose the data you need through the markers and scopes below.
 
-This README describes version `0.9.0` and the current public API.
+This README describes version `0.10.0` and the current public API.
 
 ## Requirements and installation
 
 - Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`.
-- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
+- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
 - The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`. Without the define, or with `false`, the facade returns the app content unchanged; see [Production builds](#production-builds). `enabled: true` cannot override the compile-time flag.
 
 This package declares `publish_to: none`. Add it from Git:
@@ -28,7 +28,7 @@ For a local checkout, use `path: ../flutter_qa_inspector` instead, adjusted rela
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 ```
 
-You do not need to declare `archive` or `share_plus` separately unless your app imports them directly. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
+You do not need to declare `archive` or `share_plus` separately unless your app imports them directly. An app that uses Dio already declares `dio`; keep its constraint inside `^5.2.0`. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
 
 Check the `share_plus` version resolved in your lockfile against the host's native toolchain:
 
@@ -46,7 +46,7 @@ Dependency resolution checks SDK constraints but does not update native deployme
 
 1. Reproduce the issue, then tap the floating bug button. An existing QA menu can also call `BugInspector.maybeModeCubitOf(context)?.enable()`.
 2. `BugInspectable` widgets receive pink borders and `BugInspectablePage` screens receive blue borders. The app content stops receiving pointer input, including taps, scrolling, and hover events.
-3. Tap a highlighted widget, or use **Select screen** on the floating toolbar to select the current screen. The inspector measures bounds, captures declared widget parameters and BLoC/Cubit snapshots, and reads the recent timeline. A tap outside all widget markers keeps selection mode active by default.
+3. Tap a highlighted widget, or use **Select screen** on the floating toolbar to select the current screen. The inspector measures bounds, captures declared widget parameters and BLoC/Cubit snapshots, and reads the recent timeline and the recorded API calls. A tap outside all widget markers keeps selection mode active by default. When API calls are recorded, the toolbar also has **Inspect network** below **Select screen**, with the number of calls and failed calls; it leaves selection mode and opens the API call history (see [API calls (Dio)](#api-calls-dio)).
 4. The inspector disables selection mode by default, then calls `onWidgetSelected(widgetContext, selection)`. Use the toolbar's close button to cancel selection instead.
 5. With the quick setup, the callback captures the app and opens `BugReportPage`. Annotate the image, enter a description, and tap **Send** to share the PNG and ZIP.
 
@@ -88,6 +88,14 @@ class App extends StatelessWidget {
 }
 ```
 
+To record API calls, add the interceptor to each Dio client of the app, after the interceptors that change the request (see [API calls (Dio)](#api-calls-dio)):
+
+```dart
+if (BugInspector.enabledFromEnvironment) {
+  dio.interceptors.add(const BugInspectorDioInterceptor());
+}
+```
+
 For an existing app, preserve its bootstrap, Navigator/Router, theme, localization, providers, and callbacks. Compose the inspector into the existing builder and pass its `child` through. For example, inside that builder:
 
 ```dart
@@ -98,8 +106,8 @@ return FlutterQaInspector.wrap(
 
 `MaterialApp.router` supports the same builder pattern; keep your existing `routerConfig`.
 
-- `FlutterQaInspector.install({stateRecorder})` installs a `MultiBlocObserver` combining the existing observer with `BugInspectorBlocObserver`. Later calls do nothing. `FlutterQaInspector.recorder` exposes the installed recorder. Without the define, installation does nothing and the recorder is `null`.
-- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, strings:, captureScreenshot:, share:)` hosts the inspector, captures a screenshot, and opens the report on the root navigator for each selection. It uses the installed recorder unless you supply one. Without the define, it returns `child` directly.
+- `FlutterQaInspector.install({stateRecorder, networkRecorder})` installs a `MultiBlocObserver` combining the existing observer with `BugInspectorBlocObserver`, and creates the `BugNetworkRecorder` of the API calls. Later calls do nothing. `FlutterQaInspector.recorder` and `FlutterQaInspector.networkRecorder` expose the installed recorders. Without the define, installation does nothing and both are `null`.
+- `FlutterQaInspector.wrap(child:, enabled:, stateRecorder:, networkRecorder:, strings:, captureScreenshot:, share:)` hosts the inspector, captures a screenshot, and opens the report on the root navigator for each selection. It uses the installed recorders unless you supply them. Without the define, it returns `child` directly.
 - `FlutterQaInspector.builder` is `wrap` with default options. Set `captureScreenshot: false` on `wrap` for reports without an image.
 
 Run the app or build a QA artifact with the same flag:
@@ -145,7 +153,9 @@ Back closes the editor before the form. Leaving a form with a description or ann
 
 `BugReportBundle.nameFor(selection.id, selection.capturedAtUtc)` generates a name such as `bug_counter.increment_20261112_093005`, using a sanitized ID and the UTC selection time. The share sheet receives `<name>.png` when available and `<name>.zip`. **Copy JSON** copies `{"description": ..., ...inspector.json}`; this additional description field is not written to `inspector.json` in the ZIP.
 
-A custom callback can reuse the form with `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)`. Capture the screenshot before opening the form. The bundle does not automatically include app version, build number, Git SHA, or device details; add those in a custom flow if needed.
+A custom callback can reuse the form with `BugReportPage.open(widgetContext, selection:, screenshot:, strings:, share:)`. Capture the screenshot before opening the form. The form lists the recorded API calls in a **Network** section, newest first; tapping a call opens its page. **Request**: the scheme and host, then the method and path with each query parameter name and value in its own color (redacted values greyed out). **Request headers**: one row per header, name and value, with a button that copies the value (a redacted value has none). **Request body**, when there is one. Then **Response**: status code and message, duration, and start time; the error, when there is one; the response headers, in the same format; and the response body. A whole JSON object or list body (request or response) shows right in the call page as a collapsible tree: tap an object or list to open or close it, or use **Expand all** / **Collapse all** in the section header (the root stays open); keys, strings, numbers, booleans, and `null` have their own colors, and each object or list shows its item count. The tree first opens one level at a time while it stays within 100 rows: a small body shows whole, a long list shows its items closed. Rows are built as they scroll in. A body cut by `maxBodyLength`, and any other body, is selectable text. The **Payload** preview leaves `network` out because it has its own section; `inspector.json` and **Copy JSON** include it.
+
+The bundle does not automatically include app version, build number, Git SHA, or device details; add those in a custom flow if needed.
 
 ## Mark widgets and capture state
 
@@ -317,6 +327,9 @@ The accessor returns `null` without an enabled host, including production builds
 | `modeCubit` | `null` | The host creates and closes its own Cubit. When supplied, the caller owns and closes it. |
 | `stateRecorder` | `null` | Use the same instance as the observer. |
 | `historyWindow` | 30 seconds | Time window included in `stateHistory`. |
+| `networkRecorder` | `null` | Use the same instance as the `BugInspectorDioInterceptor`. Without it, `network` is empty. |
+| `networkHistoryWindow` | `null` | Calls that ended within this window, plus running calls, are included in `network`. `null` includes every kept call. |
+| `strings` | `null` | Texts of the **Inspect network** button and the API call history; `BugReportStrings.of(context)` when `null`. The facade passes its `strings:`. |
 | `disableModeOnSelection` | `true` | If `false`, disable mode before capturing or opening a form below the overlay. |
 | `selectionTrigger` | `BugSelectionTrigger.tapUp` | Selects after a confirmed tap. `tapDown` selects immediately, even before a drag. |
 | `showLauncher` | `true` | Shows the bug button while mode is disabled. The selection toolbar always appears while selecting. The launcher hides while the callback's future is pending. |
@@ -384,11 +397,73 @@ Selection capture and the history cutoff share `capturedAtUtc`. Example `selecti
       "blocType": "CounterCubit", "instanceId": "00002a",
       "fromStateType": "int", "toStateType": "int"
     }
-  ]
+  ],
+  "network": []
 }
 ```
 
-`kind` is `page` for a screen selection. `route.name` appears when the route has a name (`home` uses `/`). `label`, `source.file`, and `source.line` appear only when supplied. `widgetState` is always present; `widgetStateCaptureErrorType` appears only on capture failure. `blocs` and `stateHistory` may be empty. Source metadata is supplied by the app, not discovered automatically.
+`kind` is `page` for a screen selection. `route.name` appears when the route has a name (`home` uses `/`). `label`, `source.file`, and `source.line` appear only when supplied. `widgetState` is always present; `widgetStateCaptureErrorType` appears only on capture failure. `blocs`, `stateHistory`, and `network` may be empty. Source metadata is supplied by the app, not discovered automatically.
+
+## API calls (Dio)
+
+Only apps that use [Dio](https://pub.dev/packages/dio) are supported. `BugInspectorDioInterceptor` writes every call of a Dio client into a `BugNetworkRecorder`, and each selection copies the recorder's calls into `network`:
+
+```dart
+final dio = Dio(BaseOptions(baseUrl: 'https://api.example.com'));
+if (BugInspector.enabledFromEnvironment) {
+  // Last: it sees the request as it is sent, with the headers added by the
+  // other interceptors (their secret values are redacted).
+  dio.interceptors.add(const BugInspectorDioInterceptor());
+}
+```
+
+- Without `recorder:`, the interceptor writes into `FlutterQaInspector.networkRecorder`, read at every request, so the Dio client may be created before or after `install`. Calls made while no recorder exists are not recorded. A custom host passes the same `BugNetworkRecorder` to the interceptor (`recorder:`) and to `BugInspector.networkRecorder`.
+- `filter: (options) => ...` leaves calls out, for example health checks or endpoints whose bodies hold personal data.
+- The interceptor always passes the request, response, and error on unchanged; recording errors are dropped. It only adds `BugInspectorDioInterceptor.extraKey` to `RequestOptions.extra`.
+- `BugNetworkRecorder` keeps the newest 100 calls in memory (`maxRecords`) and the first 16384 characters of each text or JSON body (`maxBodyLength`); a cut body has `truncated: true` and the full `size`. Bytes and streams keep only their size or kind; `FormData` keeps its text fields and file names, never file contents.
+- Redaction: values of `defaultRedactedHeaders` (`Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, ...) and of `defaultRedactedFields` (`password`, `token`, `accessToken`, `refreshToken`, `apiKey`, `otp`, `pin`, ...) in JSON bodies, form fields, and query parameters become `REDACTED`; URL user info is removed. Field names match ignoring case, `_`, and `-`. Extend the sets with `BugNetworkRecorder(redactedFields: {...BugNetworkRecorder.defaultRedactedFields, 'iban'})`, passed to `install(networkRecorder:)`. Other personal data and plain-text bodies are kept as they are.
+- `status` is `completed` (accepted response), `failed` (a `DioException`: rejected status code, timeout, connection error, cancel; the response is kept when there was one), or `pending`. A call is `pending` when it was still running at selection time, or when an interceptor added before this one ended it in `onError` (for example a retry interceptor that resolves the error). A call that an earlier interceptor answers in `onRequest` (for example from a cache) never reaches this interceptor and is not recorded. A retry with `dio.fetch` goes through the interceptor again and gets its own record.
+
+One `network` entry:
+
+```json
+{
+  "id": "000003",
+  "status": "failed",
+  "method": "POST",
+  "url": "https://api.example.com/orders?lang=vi",
+  "startedAtUtc": "2026-11-13T10:00:01.000Z",
+  "endedAtUtc": "2026-11-13T10:00:01.240Z",
+  "durationMs": 240,
+  "request": {
+    "headers": { "Authorization": "REDACTED", "content-type": "application/json" },
+    "body": { "kind": "json", "value": { "productId": 7, "quantity": 2 }, "size": 28 }
+  },
+  "response": {
+    "statusCode": 500,
+    "headers": { "content-type": "application/json" },
+    "body": { "kind": "json", "value": { "code": "internal" }, "size": 19 }
+  },
+  "error": { "type": "badResponse", "message": "..." }
+}
+```
+
+`body.kind` is `json`, `text`, `bytes`, `formData`, `stream`, or `other` (only `valueType`). `response` is absent without a response, `error` without an error, `endedAtUtc` and `durationMs` while pending. Calls are those of the whole app, oldest first, not only those of the selected widget. Timestamps come from the device clock, like `capturedAtUtc`.
+
+### API call history
+
+While selecting, the toolbar shows **Inspect network** (`BugInspector.networkButtonKey`) below **Select screen** whenever the host has a `networkRecorder` (with the facade: after `install`). Its subtitle counts the kept calls and those that failed or returned a status code of 400 or more, and follows new calls. Tapping it leaves selection mode and pushes `BugNetworkHistoryPage` on the app's root navigator as `/qa-network-history`; the bug button hides until it closes.
+
+`BugNetworkHistoryPage` lists every kept call, newest first, updated as calls start and end (`BugNetworkRecorder` is a `Listenable`). A tap opens the call details and the JSON tree, as in the report. **Clear** empties the recorder, so later reports no longer include those calls. To open it from an existing QA menu:
+
+```dart
+final recorder = FlutterQaInspector.networkRecorder;
+if (recorder != null) {
+  BugNetworkHistoryPage.open(context, recorder: recorder);
+}
+```
+
+Like `BugReportPage`, a direct call does not check the compile-time define. Texts: `networkButtonLabel`, `networkButtonSubtitle`, `networkHistoryTitle`, `networkHistoryEmpty`, `networkClear`, `close` in `BugReportStrings`.
 
 ## Screenshots and annotations
 
@@ -483,22 +558,23 @@ The editor preserves image aspect ratio and uses the largest size allowed by its
 
 | Component | Without the define |
 | --- | --- |
-| `FlutterQaInspector` | `install` leaves `Bloc.observer` unchanged; `recorder` is `null`; `wrap`/`builder` return the original child. |
+| `FlutterQaInspector` | `install` leaves `Bloc.observer` unchanged; `recorder` and `networkRecorder` are `null`; `wrap`/`builder` return the original child. |
 | `BugInspector` | Returns `child`, regardless of `enabled`; no launcher, selection layer, or `InspectModeCubit` is created. |
 | `BugInspectable`, `BugInspectablePage`, `.route` | Return `child`; no registration, extra render object, or `GlobalKey`. |
 | `BugBlocScope.lazy` | Returns `child` and never calls `readBloc` during the inspector flow. |
 | `BugInspectableWidget` | Overrides no widget methods; the inspector never calls `bugSnapshot()`. |
 | `BugInspectorBlocObserver` | Records nothing, even if manually installed. |
+| `BugInspectorDioInterceptor` | Records nothing and passes every request, response, and error on unchanged; `FlutterQaInspector.networkRecorder` is `null`. |
 | `maybeModeCubitOf`, `captureScreenshot` | Return `null`. |
 | `BugScreenshotEditor` | Builds an empty box. |
 | `BugScreenshot.toAnnotatedPng` | Returns the original `pngBytes`. |
 
-Direct marker/host wrappers still add widget elements, but no render objects. Their layout, paint, hit testing, and semantics remain unchanged. [production_build_test.dart](test/production_build_test.dart) checks render-tree and semantics parity against an app without the package. No current binary-size measurement is provided; historical measurements before the report/plugin integration do not describe version `0.9.0`.
+Direct marker/host wrappers still add widget elements, but no render objects. Their layout, paint, hit testing, and semantics remain unchanged. [production_build_test.dart](test/production_build_test.dart) checks render-tree and semantics parity against an app without the package. No current binary-size measurement is provided; historical measurements before the report/plugin integration do not describe version `0.10.0`.
 
 The compile-time gate does not prevent evaluation of arguments supplied by your app. Keep these boundaries in mind:
 
 - Prefer `BugBlocScope.lazy` over `BugBlocScope(bloc: context.read<T>())`; the latter reads its provider during build even in production.
-- Gate app-owned QA recorders, observers, Cubits, and custom report entry points with `if (BugInspector.enabledFromEnvironment)`. The facade already gates its own installation and report entry point.
+- Gate app-owned QA recorders, observers, Dio interceptors, Cubits, and custom report entry points with `if (BugInspector.enabledFromEnvironment)`. The facade already gates its own installation and report entry point.
 - Direct calls to `BugReportPage` and `BugReportBundle` still open forms or create bundles without the define; gate your own entry points if they must be QA-only.
 - The native `share_plus` plugin remains included.
 - Use `maybeModeCubitOf` instead of reading an inspector Cubit that does not exist in production.
@@ -510,7 +586,7 @@ Before release, ensure production commands and CI omit `FLUTTER_QA_INSPECTOR=tru
 - With `Expanded`, `Flexible`, or `Positioned`, put the marker inside their `child` to preserve parent data. In sliver lists, mark box children inside the item builder or `SliverToBoxAdapter`, not the sliver itself.
 - `widgetType` comes from `runtimeType`; builds using `--obfuscate` may shorten it. Use stable marker IDs such as `home.quick_add_water` and repository-relative `sourceFile` paths.
 - Supply `sourceLine` only when known; source metadata can drift between builds and checkouts. Match the report to the correct app revision before investigating.
-- Registry entries, timeline history, and annotations are not automatically persisted to disk. The exported bundle is the report artifact.
+- Registry entries, timeline history, API calls, and annotations are not automatically persisted to disk. The exported bundle is the report artifact.
 
 ## Development and verification
 

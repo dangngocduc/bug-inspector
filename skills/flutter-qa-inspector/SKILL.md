@@ -1,6 +1,6 @@
 ---
 name: flutter-qa-inspector
-description: Tích hợp flutter_qa_inspector và thêm inspect cho widget/page Flutter; đọc, mô tả và phân tích bug report ZIP do flow của thư viện xuất ra, gồm screenshot.png, description.txt và inspector.json. Dùng khi user hỏi thư viện support gì, cách tích hợp/snapshot state/timeline/annotation, hoặc gửi ZIP báo lỗi để hiểu vị trí UI và dữ liệu liên quan. Không dùng cho ZIP hoặc crash report không liên quan.
+description: Tích hợp flutter_qa_inspector và thêm inspect cho widget/page Flutter; đọc, mô tả và phân tích bug report ZIP do flow của thư viện xuất ra, gồm screenshot.png, description.txt và inspector.json (kể cả các API call Dio đã record). Dùng khi user hỏi thư viện support gì, cách tích hợp/snapshot state/timeline/network Dio/annotation, hoặc gửi ZIP báo lỗi để hiểu vị trí UI và dữ liệu liên quan. Không dùng cho ZIP hoặc crash report không liên quan.
 ---
 
 # Flutter QA Inspector
@@ -13,7 +13,7 @@ Giúp agent dùng public API của `flutter_qa_inspector` để tester chọn wi
 | --- | --- |
 | Nhận file ZIP để mô tả, phân tích hoặc sửa bug | [references/bug-reports.md](references/bug-reports.md) trước; dùng [scripts/read_bug_report.py](scripts/read_bug_report.py) để đọc đúng bundle |
 | Thư viện support gì, dữ liệu trả về và giới hạn | [references/capabilities.md](references/capabilities.md) |
-| Cài dependency, tích hợp nhanh (`FlutterQaInspector`, form báo lỗi có sẵn), host tùy chỉnh, observer, QA/production build | [references/integration.md](references/integration.md) |
+| Cài dependency, tích hợp nhanh (`FlutterQaInspector`, form báo lỗi có sẵn), host tùy chỉnh, observer, record API call bằng Dio interceptor, QA/production build | [references/integration.md](references/integration.md) |
 | Thêm inspect widget/page, gắn BLoC/Cubit hoặc params của widget (`widgetState`) | [references/widget-page.md](references/widget-page.md) |
 | Chụp ảnh, preview, editor đánh dấu và xuất PNG | [references/screenshots.md](references/screenshots.md) |
 
@@ -21,7 +21,7 @@ Chỉ đọc reference liên quan. Với input ZIP, bắt đầu từ report, kh
 
 ## Hiểu bug từ ZIP
 
-Đọc đủ `description.txt`, `inspector.json` và xem `screenshot.png` nếu có. Liên kết triệu chứng nhìn thấy, nội dung tester báo, marker/source/route, snapshot và timeline để mô tả bug. Chỉ đọc JSON hoặc chỉ nhìn ảnh là chưa đủ khi bundle có cả hai.
+Đọc đủ `description.txt`, `inspector.json` và xem `screenshot.png` nếu có. Liên kết triệu chứng nhìn thấy, nội dung tester báo, marker/source/route, snapshot, timeline và các API call trong `inspector.network` để mô tả bug. Chỉ đọc JSON hoặc chỉ nhìn ảnh là chưa đủ khi bundle có cả hai.
 
 Snapshot phản ánh **lúc tester chọn vùng lỗi**, không bảo đảm chính xác thời điểm bug phát sinh; ảnh có thể được chụp ở frame sau. Phân biệt bằng chứng, dữ liệu thiếu và giả thuyết; không khẳng định root cause từ marker hoặc tên state. Nếu user chỉ cần giải thích report thì không tự sửa code. Nếu user yêu cầu sửa, dùng source metadata/ID để tìm và kiểm chứng trong checkout hiện tại trước khi sửa.
 
@@ -47,6 +47,7 @@ Nếu skill được chuyển sang host repo khác, tìm dependency đang đư�
 - Selection mô tả `child` trực tiếp của marker: `widgetType` là runtime type, `widgetState` là params của `child` đó. Params cần `with BugInspectableWidget` trên class widget làm `child` (không phải trên `State`); `child` không có mixin cho `widgetState: {}`. Từ `0.9.0` không còn `BugInspectableState`/`widgetStates`. Cả `bugSnapshot()` và `snapshotBuilder` phải đồng bộ, không thay đổi state, chỉ trả JSON-compatible values và bỏ secrets/dữ liệu cá nhân.
 - Khi cần timeline với host tùy chỉnh, cài observer trước khi tạo BLoC/Cubit, giữ observer đang có và truyền cùng một `BugStateRecorder` cho observer lẫn host (`FlutterQaInspector.install` đã làm việc này cho `wrap`). Timeline chỉ chứa tên kiểu và thời điểm, không phải lịch sử đầy đủ giá trị state.
 - Chuỗi hiển thị đi qua `strings:` (`BugReportStrings`, có sẵn `en`/`vi` theo locale); host có l10n thì map vào đó. Gửi report đi nơi khác (upload, ticket) qua `share:`. Chỉ dùng `BugInspector` + `onWidgetSelected(widgetContext, selection)` khi host cần form riêng; package không có dịch vụ upload hay tích hợp issue tracker.
+- API call chỉ hỗ trợ app dùng Dio: thêm `BugInspectorDioInterceptor()` vào từng `Dio` của app, sau các interceptor sửa request, trong nhánh `BugInspector.enabledFromEnvironment`. Không có `recorder:` thì ghi vào `FlutterQaInspector.networkRecorder` do `install` tạo; host tùy chỉnh truyền cùng một `BugNetworkRecorder` cho interceptor và `BugInspector.networkRecorder`. Header/field bí mật mặc định được redact; dữ liệu cá nhân khác cần thêm vào `redactedFields` hoặc loại endpoint bằng `filter`. Không hỗ trợ `http`/`HttpClient` khác.
 - Không cần thêm nút Inspect vào UI: host có launcher nổi. Menu QA riêng dùng `maybeModeCubitOf(context)?.enable()` từ context dưới host; tránh `context.read<InspectModeCubit>()` vì production không có Cubit đó.
 
 ## Kiểm tra và bàn giao

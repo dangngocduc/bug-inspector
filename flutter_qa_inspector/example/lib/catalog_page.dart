@@ -1,6 +1,9 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
+
+import 'demo_api.dart';
 
 enum CatalogStatus { loading, ready }
 
@@ -59,13 +62,24 @@ final class CatalogFilterChanged extends CatalogEvent {
 }
 
 class CatalogBloc extends Bloc<CatalogEvent, CatalogState> {
-  CatalogBloc() : super(const CatalogState()) {
+  CatalogBloc({Dio? dio})
+      : _dio = dio ?? demoDio,
+        super(const CatalogState()) {
     on<CatalogStarted>((event, emit) async {
-      await Future<void>.delayed(const Duration(milliseconds: 300));
+      // Recorded by BugInspectorDioInterceptor: the report of a selection
+      // made after it lists this call under `network`.
+      final response = await _dio.get<Map<String, Object?>>(
+        '/products',
+        queryParameters: {'page': 1},
+      );
+      final items = response.data!['items']! as List<Object?>;
       emit(
         state.copyWith(
           status: CatalogStatus.ready,
-          items: [for (var i = 1; i <= 30; i++) 'Sản phẩm $i'],
+          items: [
+            for (final item in items.cast<Map<String, Object?>>())
+              item['name']! as String,
+          ],
         ),
       );
     });
@@ -78,6 +92,8 @@ class CatalogBloc extends Bloc<CatalogEvent, CatalogState> {
       (event, emit) => emit(state.copyWith(filter: event.filter)),
     );
   }
+
+  final Dio _dio;
 }
 
 class CatalogPage extends StatelessWidget {

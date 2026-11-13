@@ -8,12 +8,15 @@ from pathlib import Path
 import struct
 import sys
 import tempfile
+from urllib.parse import urlsplit, urlunsplit
 import zipfile
 
 
 REQUIRED_ENTRIES = ("description.txt", "inspector.json")
 KNOWN_ENTRIES = (*REQUIRED_ENTRIES, "screenshot.png")
 MAX_FILE_BYTES = 64 * 1024 * 1024
+# The manifest lists at most this many notable API calls; read the JSON for all.
+MAX_NOTABLE_CALLS = 20
 
 
 def reject_non_finite(value):
@@ -52,6 +55,61 @@ def warn_capture_errors(field, values, warnings):
                 f"inspector.{field}[{index}] has captureErrorType: "
                 f"{value['captureErrorType']}"
             )
+
+
+def url_without_query(url):
+    """The URL of a call without its query and fragment, for the manifest."""
+    if not isinstance(url, str):
+        return None
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return None
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
+def summarize_network(calls, warnings):
+    """Counts the API calls (since 0.10.0) and lists the notable ones."""
+    statuses = Counter()
+    notable = []
+    truncated = 0
+    for index, call in enumerate(calls):
+        if not isinstance(call, dict):
+            warnings.append(f"inspector.network[{index}] is not an object")
+            continue
+        status = call.get("status")
+        statuses[status if isinstance(status, str) else "unknown"] += 1
+        response = call.get("response") if isinstance(call.get("response"), dict) else {}
+        status_code = response.get("statusCode")
+        error = call.get("error") if isinstance(call.get("error"), dict) else {}
+        for part in (call.get("request"), response):
+            body = part.get("body") if isinstance(part, dict) else None
+            if isinstance(body, dict) and body.get("truncated") is True:
+                truncated += 1
+        failed = status in ("failed", "pending") or (
+            isinstance(status_code, int) and status_code >= 400
+        )
+        if failed and len(notable) < MAX_NOTABLE_CALLS:
+            notable.append({
+                key: value
+                for key, value in (
+                    ("index", index),
+                    ("id", call.get("id")),
+                    ("status", status),
+                    ("method", call.get("method")),
+                    ("url", url_without_query(call.get("url"))),
+                    ("statusCode", status_code),
+                    ("errorType", error.get("type")),
+                    ("durationMs", call.get("durationMs")),
+                )
+                if value is not None
+            })
+    return {
+        "by_status": dict(statuses),
+        "truncated_bodies": truncated,
+        # Failed, pending, or with a status code >= 400; URL without query.
+        "notable_calls": notable,
+    }
 
 
 def read_report(archive, output_dir=None):
@@ -107,6 +165,22 @@ def read_report(archive, output_dir=None):
             f"inspector.widgetStateCaptureErrorType: {widget_state_error}"
         )
 
+    # Since 0.10.0: the API calls of a Dio client recorded by the package.
+    network = inspector.get("network")
+    network_summary = None
+    if isinstance(network, list):
+        snapshot_counts["network"] = len(network)
+        network_summary = summarize_network(network, warnings)
+    elif "network" in inspector:
+        snapshot_counts["network"] = None
+        warnings.append("inspector.network is not a list")
+    else:
+        snapshot_counts["network"] = None
+        warnings.append(
+            "inspector.network is missing: a report before 0.10.0 has no API "
+            "calls, which does not mean the app made none"
+        )
+
     image = contents.get("screenshot.png")
     image_size = None
     metadata = payload.get("screenshot")
@@ -151,6 +225,7 @@ def read_report(archive, output_dir=None):
             if field in inspector
         },
         "counts": snapshot_counts,
+        "network": network_summary,
         "png_dimensions": image_size,
         "ignored_entries": ignored,
         "warnings": warnings,

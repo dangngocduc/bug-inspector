@@ -1,9 +1,9 @@
 name: flutter_qa_inspector
 description: >-
   QA-build inspector that lets testers pick a widget or a whole screen and
-  attach its info, BLoC/Cubit state snapshots, a recent state timeline and an
-  annotated screenshot to a bug report, shared as a ZIP.
-version: 0.9.0
+  attach its info, BLoC/Cubit state snapshots, a recent state timeline, the
+  Dio API calls and an annotated screenshot to a bug report, shared as a ZIP.
+version: 0.10.0
 publish_to: none
 
 environment:
@@ -17,6 +17,9 @@ dependencies:
   archive: ^4.0.0
   # FlutterQaInspector.install uses MultiBlocObserver, added in bloc 9.2.0.
   bloc: ^9.2.0
+  # BugInspectorDioInterceptor records the API calls of apps that use Dio.
+  # Pure Dart: no native code. DioException is in 5.2.0.
+  dio: ^5.2.0
   flutter:
     sdk: flutter
   flutter_bloc: ^9.1.1
