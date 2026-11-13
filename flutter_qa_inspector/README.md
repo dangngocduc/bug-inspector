@@ -9,7 +9,7 @@ This README describes version `0.10.0` and the current public API.
 ## Requirements and installation
 
 - Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`.
-- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
+- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `cupertino_icons: ^1.0.8` (the icon font of the report pages), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
 - The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`. Without the define, or with `false`, the facade returns the app content unchanged; see [Production builds](#production-builds). `enabled: true` cannot override the compile-time flag.
 
 This package declares `publish_to: none`. Add it from Git:
@@ -28,7 +28,7 @@ For a local checkout, use `path: ../flutter_qa_inspector` instead, adjusted rela
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 ```
 
-You do not need to declare `archive` or `share_plus` separately unless your app imports them directly. An app that uses Dio already declares `dio`; keep its constraint inside `^5.2.0`. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
+You do not need to declare `archive`, `share_plus`, or `cupertino_icons` separately unless your app imports them directly; the `CupertinoIcons` font is bundled through this package. An app that uses Dio already declares `dio`; keep its constraint inside `^5.2.0`. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
 
 Check the `share_plus` version resolved in your lockfile against the host's native toolchain:
 

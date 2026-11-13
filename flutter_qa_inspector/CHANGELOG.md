@@ -51,6 +51,11 @@
     `networkHistoryTitle`, `networkHistoryEmpty`, `networkClear`, `close`);
     the facade passes its own.
 - New dependency: `dio: ^5.2.0`, pure Dart.
+- New dependency: `cupertino_icons: ^1.0.8`, the font of the `CupertinoIcons`
+  of `BugReportPage`, the JSON tree and `BugNetworkHistoryPage`. Before, a
+  host app without its own `cupertino_icons` showed empty boxes in place of
+  these icons. A host that declared it only as a workaround for this package
+  can drop it.
 - Example: the catalog loads its products with Dio through a local adapter,
   so its report lists `GET /products?page=1` with a redacted token. The
   comments page calls the real https://jsonplaceholder.typicode.com API:

@@ -17,6 +17,9 @@ dependencies:
   archive: ^4.0.0
   # FlutterQaInspector.install uses MultiBlocObserver, added in bloc 9.2.0.
   bloc: ^9.2.0
+  # The font of the CupertinoIcons of BugReportPage, the JSON tree and
+  # BugNetworkHistoryPage. Declared here, so every host app bundles it.
+  cupertino_icons: ^1.0.8
   # BugInspectorDioInterceptor records the API calls of apps that use Dio.
   # Pure Dart: no native code. DioException is in 5.2.0.
   dio: ^5.2.0
