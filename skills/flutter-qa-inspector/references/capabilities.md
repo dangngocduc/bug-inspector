@@ -29,6 +29,8 @@
 
 Khi inspect mode bật, app bên dưới ngừng nhận pointer; tap chọn không gọi action của widget. Border được vẽ foreground mà không đổi kích thước/padding. Tap ngoài marker giữ mode, trừ khi host bật `selectPageOnEmptyTap`.
 
+Danh sách API trong `BugNetworkHistoryPage` và nhóm **Network** của `BugReportPage` dùng chung cách hiển thị: host + duration, bên dưới là thời điểm nhận response theo giờ local thiết bị (`Response: HH:mm:ss.SSS`, từ `endedAtUtc`). Lỗi không có response dùng nhãn `networkError` (**Error**/**Lỗi**) và thời điểm ghi nhận lỗi; pending chưa hiện thời gian kết thúc. Nhãn response dùng `BugReportStrings.networkResponse`. Thứ tự vẫn theo lúc request bắt đầu, mới nhất trước; timestamp xuất JSON/ZIP giữ UTC.
+
 ## Dữ liệu selection
 
 `selection.toJson()` cung cấp:

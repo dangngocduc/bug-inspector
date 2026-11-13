@@ -1,5 +1,8 @@
 ## 0.10.0
 
+- API list rows in the history and bug report show the local response time
+  (`HH:mm:ss.SSS`) below the host and duration. Errors without a response
+  show the error time instead; pending calls have no end time yet.
 - Network: the API calls of a Dio client, request and response, are part of
   every selection and of the bug report. Only Dio is supported.
   - `BugInspectorDioInterceptor`: add it to the Dio client, last, inside

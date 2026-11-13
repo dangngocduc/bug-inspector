@@ -464,6 +464,8 @@ if (recorder != null) {
 }
 ```
 
+Each row in the API history and the report's **Network** section shows the host and duration, then the time the response was recorded, in the device's local time (`HH:mm:ss.SSS`, for example `Response: 17:00:01.240`). This uses `endedAtUtc`, the device clock when the call reaches the interceptor. An error without a response uses the localized **Error** label and the time the error was recorded; pending calls have no end time yet. Rows stay ordered by request start, newest first. Exported timestamps remain in UTC.
+
 Like `BugReportPage`, a direct call does not check the compile-time define. Texts: `networkButtonLabel`, `networkButtonSubtitle`, `networkHistoryTitle`, `networkHistoryEmpty`, `networkClear`, `close` in `BugReportStrings`.
 
 ## Screenshots and annotations

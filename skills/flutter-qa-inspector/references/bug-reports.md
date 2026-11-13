@@ -102,12 +102,14 @@ Helper báo lỗi với ZIP hỏng, thiếu entry bắt buộc, JSON không có 
 
 Mỗi phần tử `inspector.network[]` là một call Dio, theo thứ tự bắt đầu (cũ trước), gồm tối đa `maxReportRecords` (mặc định 10) call **mới nhất** của **toàn app** recorder còn giữ lúc chọn, không riêng widget được chọn. Đủ 10 call thường nghĩa là các call cũ hơn đã bị lược khỏi report: call gây lỗi có thể nằm ngoài danh sách; khi cần, nhờ tester mở **Inspect network** (lịch sử đầy đủ trên máy) hoặc tăng `maxReportRecords`. Form hiển thị ngược lại (mới nhất trước).
 
+Mỗi dòng API trên form và **Inspect network** còn hiển thị `endedAtUtc` theo giờ local thiết bị (`HH:mm:ss.SSS`): nhãn **Response** khi có response hoặc call `completed`, nhãn **Error**/**Lỗi** khi lỗi không có response. Pending không có dòng thời gian kết thúc. Đây là lúc response/error qua interceptor, không phải giờ server; khi đối chiếu với JSON/ZIP, dùng timestamp UTC đầy đủ trong payload. Việc response về không đổi vị trí dòng vì danh sách xếp theo lúc bắt đầu request.
+
 | Field | Ý nghĩa |
 | --- | --- |
 | `id` | ID trong phiên chạy, không phải request ID của server. |
 | `status` | `completed`: response được `validateStatus` chấp nhận. `failed`: `DioException` (status bị từ chối, timeout, connection, cancel), giữ `response` nếu có. `pending`: chưa thấy kết thúc lúc chọn, hoặc interceptor đứng trước đã resolve lỗi (retry) nên không thấy kết thúc; không chứng minh request còn treo. |
 | `method`, `url` | URL đầy đủ kèm query; giá trị query nhạy cảm là `REDACTED`, user info đã bị bỏ. |
-| `startedAtUtc`, `endedAtUtc`, `durationMs` | Giờ thiết bị lúc call qua interceptor; không có khi `pending`. Không phải thời gian server. |
+| `startedAtUtc`, `endedAtUtc`, `durationMs` | Giờ thiết bị lúc request bắt đầu và response/error qua interceptor; `startedAtUtc` luôn có, `endedAtUtc` và `durationMs` không có khi `pending`. Timestamp lưu UTC, không phải thời gian server. |
 | `request.headers`, `response.headers` | Header một giá trị, nhiều giá trị nối bằng `, `; header nhạy cảm là `REDACTED`. |
 | `request.body`, `response.body` | `kind`: `json` (`value` là JSON), `text`, `bytes`/`stream` (chỉ `size`/kind), `formData` (`fields`, tên `files`, không có nội dung file), `other` (chỉ `valueType`). `size` là độ dài đầy đủ (ký tự hoặc byte). `truncated: true` nghĩa `value` chỉ là phần đầu (string, kể cả `kind: json`) nên JSON có thể không parse được. |
 | `response` | Có khi nhận được response (kể cả 4xx/5xx). Thiếu khi lỗi kết nối/timeout/cancel. |

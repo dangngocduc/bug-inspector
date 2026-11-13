@@ -28,6 +28,8 @@ Sau khi mở **Danh mục**, report của mọi selection có nhóm **Network** 
 
 Từ màn đầu bấm **Comments (API thật)**, chạm một comment rồi bật inspector và **Select screen**: nhóm **Network** có `GET /comments/{id}` và `GET /comments` (`200`), body JSON hiện dạng cây ngay trong trang call (`/comments` dài nên mở sẵn chỉ root, các comment đang đóng), `email` hiện `REDACTED`. Mở comment 404 để thấy call `failed` màu đỏ với lỗi `badResponse`. Không cần chọn widget: bật inspector rồi bấm **Inspect network** (dưới **Select screen**) để mở lịch sử mọi API call, cập nhật trực tiếp, có nút **Clear**.
 
+Mỗi dòng API trong lịch sử và nhóm **Network** hiển thị host, duration và thời điểm nhận response theo giờ local của thiết bị, dạng `Response: HH:mm:ss.SSS`. Lỗi không có response hiện thời điểm ghi nhận lỗi với nhãn **Error** (**Lỗi** khi dùng `BugReportStrings.vi`); pending chưa có thời gian kết thúc. Danh sách vẫn xếp theo thời điểm bắt đầu request, mới nhất trước; timestamp trong JSON/ZIP vẫn là UTC.
+
 Sau khi chọn widget, trang **Bug report** mở toàn màn hình. Chạm vào ảnh trong form để mở trang **Mark up screenshot**. Kéo trên ảnh để vẽ khung, chạm vào khung để chọn, kéo để di chuyển, kéo các góc để đổi kích thước, bấm ✕ để xóa, dùng hai ngón tay để phóng to và di chuyển ảnh, rồi bấm **Done** (hoặc back) để quay lại form. **Clear all** hỏi trước khi xóa mọi khung. Dòng dưới ảnh hiện số vùng đã đánh dấu, và JSON sao chép bằng **Copy JSON** ở nhóm Payload có `screenshot.annotations`.
 
 Bấm **Send** trên thanh điều hướng để chia sẻ báo lỗi qua share sheet của hệ điều hành (`share_plus`). Package nén ba file vào `bug_<id>_<yyyyMMdd_HHmmss>.zip` (thời gian UTC lúc chọn widget):

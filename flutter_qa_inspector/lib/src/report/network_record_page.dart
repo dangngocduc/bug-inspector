@@ -1,7 +1,8 @@
 part of '../../flutter_qa_inspector.dart';
 
 /// The rows of the network section of [BugReportPage] and of
-/// [BugNetworkHistoryPage]: one per call, newest first. A tap opens the
+/// [BugNetworkHistoryPage]: one per call, newest first, with the local time
+/// the response or error was recorded once the call ends. A tap opens the
 /// details of the call in the navigator of [context], with [backTitle] on
 /// its back button.
 List<Widget> _networkTiles(
@@ -19,14 +20,25 @@ List<Widget> _networkTiles(
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        subtitle: Text(
-          <String>[
-            _networkHost(record.url),
-            if (record.duration != null)
-              '${record.duration!.inMilliseconds} ms',
-          ].where((part) => part.isNotEmpty).join(' · '),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              <String>[
+                _networkHost(record.url),
+                if (record.duration != null)
+                  '${record.duration!.inMilliseconds} ms',
+              ].where((part) => part.isNotEmpty).join(' · '),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            if (record.endedAtUtc case final endedAt?)
+              Text(
+                '${record.hasResponse || record.status == BugNetworkRecordStatus.completed ? strings.networkResponse : strings.networkError}: ${_networkLocalTime(endedAt)}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ),
         additionalInfo: Text(
           _networkStatusLabel(record, strings),
@@ -41,6 +53,14 @@ List<Widget> _networkTiles(
         ),
       ),
   ];
+}
+
+/// The device's local time when a response or error was recorded.
+String _networkLocalTime(DateTime time) {
+  final local = time.toLocal();
+  String two(int value) => value.toString().padLeft(2, '0');
+  final milliseconds = local.millisecond.toString().padLeft(3, '0');
+  return '${two(local.hour)}:${two(local.minute)}:${two(local.second)}.$milliseconds';
 }
 
 /// The path and the query of [url], or [url] when it cannot be parsed.
