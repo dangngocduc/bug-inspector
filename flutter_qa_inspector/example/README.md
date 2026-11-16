@@ -17,8 +17,12 @@ Ví dụ tích hợp `flutter_qa_inspector`:
 ```sh
 flutter pub get
 flutter run --dart-define=FLUTTER_QA_INSPECTOR=true   # bản QA
+flutter run --dart-define=FLUTTER_QA_INSPECTOR=true \
+  --dart-define=FLUTTER_QA_INSPECTOR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"   # bản QA, hiện branch
 flutter run --release                                   # như production: không có inspector
 ```
+
+Khi bật inspector, phần cuối toolbar hiện **Version** `1.0.0 (1)` (đọc bằng `package_info_plus` từ `pubspec.yaml` của example) và **Branch** nếu build có `FLUTTER_QA_INSPECTOR_BRANCH`.
 
 Nhấn **Tăng** hai lần, nhấn nút bug nổi ở cạnh phải, rồi chạm vào nút **Tăng** đang có viền. Form hiển thị `id: counter.increment` và snapshot `value: 2`; giá trị đếm giữ nguyên.
 

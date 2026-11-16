@@ -50,6 +50,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:package_info_plus/package_info_plus.dart' show PackageInfo;
 import 'package:share_plus/share_plus.dart'
     show SharePlus, ShareParams, ShareResult, ShareResultStatus, XFile;
 

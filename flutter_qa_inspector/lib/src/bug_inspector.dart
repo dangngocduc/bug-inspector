@@ -60,7 +60,9 @@ enum BugSelectionTrigger {
 ///   button that enables the mode (see [showLauncher]).
 /// * While the mode is [InspectMode.selecting], it expands into a toolbar
 ///   with a hint, a button that leaves the mode and, when a
-///   [BugInspectablePage] is on screen, a "Select screen" button.
+///   [BugInspectablePage] is on screen, a "Select screen" button. Its last
+///   part shows the app version and the [branch] the build comes from, see
+///   [showBuildInfo].
 ///
 /// The host also provides an [InspectModeCubit] to its subtree, so a QA menu
 /// of the app can call `BugInspector.maybeModeCubitOf(context)?.enable()` too.
@@ -95,6 +97,8 @@ class BugInspector extends StatelessWidget {
     this.borderWidth = defaultBorderWidth,
     this.pageBorderColor = defaultPageBorderColor,
     this.pageBorderWidth = defaultPageBorderWidth,
+    this.showBuildInfo = true,
+    this.branch = branchFromEnvironment,
   })  : assert(borderWidth >= 0),
         assert(pageBorderWidth >= 0);
 
@@ -118,6 +122,15 @@ class BugInspector extends StatelessWidget {
   /// installation of [BugInspectorBlocObserver].
   static const bool enabledFromEnvironment =
       bool.fromEnvironment('FLUTTER_QA_INSPECTOR');
+
+  /// The branch the app was built from, given with
+  /// `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=<branch>`, for example
+  /// `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=$(git rev-parse --abbrev-ref HEAD)`
+  /// in the QA build script. Empty without the define.
+  ///
+  /// The default value of [branch].
+  static const String branchFromEnvironment =
+      String.fromEnvironment('FLUTTER_QA_INSPECTOR_BRANCH');
 
   /// The default value of [historyWindow].
   static const Duration defaultHistoryWindow = Duration(seconds: 30);
@@ -153,6 +166,10 @@ class BugInspector extends StatelessWidget {
   /// The key of the toolbar button that opens [BugNetworkHistoryPage].
   static const Key networkButtonKey =
       ValueKey<String>('bug_inspector.network_button');
+
+  /// The key of the build info (app version and [branch]) at the bottom of
+  /// the toolbar.
+  static const Key buildInfoKey = ValueKey<String>('bug_inspector.build_info');
 
   /// Whether the inspector runs in a build where [enabledFromEnvironment] is
   /// `true`. Without the define, the inspector never runs, whatever this
@@ -270,6 +287,25 @@ class BugInspector extends StatelessWidget {
   /// The default border width of the [BugInspectablePage]s below this host.
   final double pageBorderWidth;
 
+  /// Whether the last part of the selection toolbar shows the build info,
+  /// so testers know which build they are reporting on:
+  ///
+  /// * the app version, `version (buildNumber)` as `package_info_plus`
+  ///   reads it from the platform (`1.2.0 (42)`). Left out while it loads
+  ///   or when the platform cannot give it.
+  /// * the [branch], left out when empty.
+  ///
+  /// Nothing is shown when both are missing. The labels are
+  /// [BugReportStrings.buildVersionLabel] and
+  /// [BugReportStrings.buildBranchLabel] of [strings].
+  final bool showBuildInfo;
+
+  /// The branch the app was built from, shown by [showBuildInfo].
+  /// [branchFromEnvironment] by default, that is the value of
+  /// `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH`. Leading and trailing spaces
+  /// are ignored; an empty value hides the branch.
+  final String branch;
+
   /// Returns the [InspectModeCubit] of the nearest host, or `null` when
   /// [context] is not below an enabled [BugInspector].
   ///
@@ -342,6 +378,11 @@ class _BugInspectorState extends State<_BugInspectorHost> {
   /// running. The launcher hides while one runs: a bug report is open.
   int _openReports = 0;
 
+  /// The app version of the build info, `null` until it is read or when the
+  /// platform cannot give it.
+  String? _appVersion;
+  bool _appVersionRequested = false;
+
   BugInspector get _inspector => widget.inspector;
 
   InspectModeCubit get _modeCubit => _inspector.modeCubit ?? _ownedModeCubit!;
@@ -350,12 +391,31 @@ class _BugInspectorState extends State<_BugInspectorHost> {
   void initState() {
     super.initState();
     _syncOwnedModeCubit();
+    _loadAppVersion();
   }
 
   @override
   void didUpdateWidget(_BugInspectorHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncOwnedModeCubit();
+    _loadAppVersion();
+  }
+
+  /// Reads the app version once, when the build info is shown.
+  /// `PackageInfo.fromPlatform` caches it for the whole run.
+  Future<void> _loadAppVersion() async {
+    if (!_inspector.showBuildInfo || _appVersionRequested) return;
+    _appVersionRequested = true;
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = _formatAppVersion(info.version, info.buildNumber);
+      if (mounted && version != null) setState(() => _appVersion = version);
+    } catch (error) {
+      assert(() {
+        debugPrint('flutter_qa_inspector: cannot read the app version: $error');
+        return true;
+      }());
+    }
   }
 
   /// Owns a cubit only when none is given.
@@ -543,6 +603,17 @@ class _BugInspectorState extends State<_BugInspectorHost> {
     final trigger = _inspector.selectionTrigger;
     final strings = _inspector.strings ?? BugReportStrings.of(context);
     final networkRecorder = _inspector.networkRecorder;
+    final appVersion = _appVersion;
+    final branch = _inspector.branch.trim();
+    final buildInfo =
+        _inspector.showBuildInfo && (appVersion != null || branch.isNotEmpty)
+            ? _BuildInfoData(
+                versionLabel: strings.buildVersionLabel,
+                version: appVersion,
+                branchLabel: strings.buildBranchLabel,
+                branch: branch.isEmpty ? null : branch,
+              )
+            : null;
     return Stack(
       fit: StackFit.passthrough,
       textDirection: textDirection ?? TextDirection.ltr,
@@ -594,6 +665,7 @@ class _BugInspectorState extends State<_BugInspectorHost> {
                     subtitle: strings.networkButtonSubtitle,
                     onPressed: () => _inspectNetwork(strings),
                   ),
+            buildInfo: buildInfo,
             textDirection: textDirection,
           ),
         ),
@@ -653,6 +725,7 @@ class _BugInspectorScope extends InheritedWidget {
 const Color _controlBackground = Color(0xE6202124);
 const Color _controlForeground = Color(0xFFFFFFFF);
 const Color _controlSecondary = Color(0xB3FFFFFF);
+const Color _controlDivider = Color(0x33FFFFFF);
 const Color _networkButtonColor = Color(0xFF00897B);
 
 /// What the **Inspect network** button of the toolbar shows and does.
@@ -669,6 +742,35 @@ class _NetworkButtonData {
   final String label;
   final String Function(int count, int failed) subtitle;
   final VoidCallback onPressed;
+}
+
+/// `version (buildNumber)`, or `version` without a build number. `null`
+/// without a version.
+String? _formatAppVersion(String version, String buildNumber) {
+  final name = version.trim();
+  final build = buildNumber.trim();
+  if (name.isEmpty) return build.isEmpty ? null : build;
+  return build.isEmpty || build == name ? name : '$name ($build)';
+}
+
+/// The build info at the bottom of the toolbar.
+@immutable
+class _BuildInfoData {
+  const _BuildInfoData({
+    required this.versionLabel,
+    required this.version,
+    required this.branchLabel,
+    required this.branch,
+  }) : assert(version != null || branch != null);
+
+  final String versionLabel;
+
+  /// `null` hides the version.
+  final String? version;
+  final String branchLabel;
+
+  /// `null` hides the branch.
+  final String? branch;
 }
 
 /// The draggable control that floats above the app content: a bug button
@@ -691,6 +793,7 @@ class _FloatingControl extends StatefulWidget {
     required this.onExit,
     required this.onSelectPage,
     required this.network,
+    required this.buildInfo,
     required this.textDirection,
   });
 
@@ -710,6 +813,9 @@ class _FloatingControl extends StatefulWidget {
 
   /// The **Inspect network** button, `null` without a network recorder.
   final _NetworkButtonData? network;
+
+  /// The build info, `null` hides it.
+  final _BuildInfoData? buildInfo;
   final TextDirection? textDirection;
 
   @override
@@ -774,6 +880,7 @@ class _FloatingControlState extends State<_FloatingControl> {
             onExit: widget.onExit,
             onSelectPage: widget.onSelectPage,
             network: widget.network,
+            buildInfo: widget.buildInfo,
           )
         : _LauncherButton(onPressed: widget.onEnable);
 
@@ -858,6 +965,7 @@ class _SelectionToolbar extends StatelessWidget {
     required this.onExit,
     required this.onSelectPage,
     required this.network,
+    required this.buildInfo,
   });
 
   final String hint;
@@ -867,12 +975,14 @@ class _SelectionToolbar extends StatelessWidget {
   final VoidCallback onExit;
   final VoidCallback onSelectPage;
   final _NetworkButtonData? network;
+  final _BuildInfoData? buildInfo;
 
   @override
   Widget build(BuildContext context) {
     final pageButtonLabel = this.pageButtonLabel;
     final pageName = this.pageName;
     final network = this.network;
+    final buildInfo = this.buildInfo;
     return Semantics(
       container: true,
       explicitChildNodes: true,
@@ -965,11 +1075,113 @@ class _SelectionToolbar extends StatelessWidget {
                     },
                   ),
                 ],
+                if (buildInfo != null) ...<Widget>[
+                  const SizedBox(height: 8),
+                  _BuildInfoFooter(info: buildInfo),
+                ],
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+/// The last part of the selection toolbar: the app version and the branch.
+class _BuildInfoFooter extends StatelessWidget {
+  const _BuildInfoFooter({required this.info});
+
+  final _BuildInfoData info;
+
+  @override
+  Widget build(BuildContext context) {
+    final version = info.version;
+    final branch = info.branch;
+    return Semantics(
+      container: true,
+      label: <String>[
+        if (version != null) '${info.versionLabel}: $version',
+        if (branch != null) '${info.branchLabel}: $branch',
+      ].join(', '),
+      excludeSemantics: true,
+      child: DecoratedBox(
+        key: BugInspector.buildInfoKey,
+        decoration: const BoxDecoration(
+          border: Border(top: BorderSide(color: _controlDivider)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 2),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              if (version != null)
+                _BuildInfoRow(
+                  icon: Icons.info_outline,
+                  label: info.versionLabel,
+                  value: version,
+                ),
+              if (version != null && branch != null) const SizedBox(height: 4),
+              if (branch != null)
+                _BuildInfoRow(
+                  icon: Icons.call_split,
+                  label: info.branchLabel,
+                  value: branch,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BuildInfoRow extends StatelessWidget {
+  const _BuildInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(icon, size: 14, color: _controlSecondary),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text.rich(
+            TextSpan(
+              children: <InlineSpan>[
+                TextSpan(
+                  text: '$label  ',
+                  style: const TextStyle(color: _controlSecondary),
+                ),
+                TextSpan(
+                  text: value,
+                  style: const TextStyle(
+                    color: _controlForeground,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            // A long branch name wraps once, then is cut.
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, height: 1.3),
+          ),
+        ),
+      ],
     );
   }
 }

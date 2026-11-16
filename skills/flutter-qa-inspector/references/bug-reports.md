@@ -145,6 +145,6 @@ Trình bày theo mức đủ để hiểu bug:
 - Giả thuyết có căn cứ, mức chắc chắn và thông tin còn thiếu. Khi report đủ mô tả triệu chứng nhưng chưa đủ root cause, nói đúng giới hạn đó.
 - Hướng kiểm tra tiếp theo; chỉ hỏi phần thiếu thực sự cản trở yêu cầu hiện tại.
 
-Nếu workspace có source của app bị lỗi, tìm marker ID/route bằng `rg` và kiểm tra source metadata trong phạm vi workspace; đây là path của **host app**, không mặc định là thư viện inspector. Trace callbacks, BLoC/Cubit và serializer liên quan để kiểm chứng giả thuyết. Không khẳng định đã kiểm tra đúng commit vì ZIP hiện tại không chứa Git SHA, app version, device hoặc environment bắt buộc.
+Nếu workspace có source của app bị lỗi, tìm marker ID/route bằng `rg` và kiểm tra source metadata trong phạm vi workspace; đây là path của **host app**, không mặc định là thư viện inspector. Trace callbacks, BLoC/Cubit và serializer liên quan để kiểm chứng giả thuyết. Không khẳng định đã kiểm tra đúng commit vì ZIP hiện tại không chứa Git SHA, app version, branch, device hoặc environment bắt buộc. App version và branch chỉ hiện ở cuối toolbar chọn trên máy tester (branch khi build có `FLUTTER_QA_INSPECTOR_BRANCH`); chỉ dùng chúng khi tester ghi lại trong `description.txt` hoặc kênh khác, không suy ra từ ZIP.
 
 Khi user yêu cầu sửa bug, tiếp tục sửa và verify theo evidence; report chỉ là điểm bắt đầu điều tra. Khi user chỉ yêu cầu giải thích/mô tả report, bàn giao phân tích mà không tự sửa app hoặc gửi ticket.

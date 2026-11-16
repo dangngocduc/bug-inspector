@@ -1,5 +1,16 @@
 ## 0.10.0
 
+- Build info: the selection toolbar ends with the app version
+  (`version (buildNumber)`, read with `package_info_plus`) and the branch the
+  build comes from, given with
+  `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=<branch>`
+  (`BugInspector.branchFromEnvironment`). Each row is left out when its
+  value is missing, the footer when both are. `BugInspector.showBuildInfo`
+  (`true`), `BugInspector.branch`, `BugInspector.buildInfoKey`,
+  `BugReportStrings.buildVersionLabel` and `buildBranchLabel`. Display only:
+  the report and `inspector.json` are unchanged.
+- New dependency `package_info_plus: >=8.3.0 <11.0.0`; its native code is
+  part of production builds too, as for `share_plus`.
 - API history and report rows have explicit vertical padding, space between
   metadata lines and before the status, and dividers aligned with the content.
 - API list rows in the history and bug report show the local response time

@@ -9,7 +9,8 @@
             "cwd": "flutter_qa_inspector/example",
             "request": "launch",
             "toolArgs": [
-                "--dart-define=FLUTTER_QA_INSPECTOR=true"
+                "--dart-define=FLUTTER_QA_INSPECTOR=true",
+                "--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=main"
             ],
             "type": "dart"
         },

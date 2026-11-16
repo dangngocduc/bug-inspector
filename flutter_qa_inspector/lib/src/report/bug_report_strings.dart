@@ -10,9 +10,9 @@ part of '../../flutter_qa_inspector.dart';
 /// texts with [copyWith].
 @immutable
 class BugReportStrings {
-  /// Creates a set of texts. Every text but those of the network section is
-  /// required, see [en] for the English ones. The texts of the network
-  /// section default to English.
+  /// Creates a set of texts. Every text but those of the network section and
+  /// of the build info is required, see [en] for the English ones. Those
+  /// default to English.
   const BugReportStrings({
     required this.selectionHint,
     required this.pageButtonLabel,
@@ -68,6 +68,8 @@ class BugReportStrings {
     this.close = 'Close',
     this.networkButtonLabel = 'Inspect network',
     this.networkButtonSubtitle = _enNetworkButtonSubtitle,
+    this.buildVersionLabel = 'Version',
+    this.buildBranchLabel = 'Branch',
   });
 
   /// The English texts, used for every locale but Vietnamese.
@@ -128,6 +130,8 @@ class BugReportStrings {
     close: 'Close',
     networkButtonLabel: 'Inspect network',
     networkButtonSubtitle: _enNetworkButtonSubtitle,
+    buildVersionLabel: 'Version',
+    buildBranchLabel: 'Branch',
   );
 
   /// The Vietnamese texts.
@@ -188,6 +192,8 @@ class BugReportStrings {
     close: 'Đóng',
     networkButtonLabel: 'Xem network',
     networkButtonSubtitle: _viNetworkButtonSubtitle,
+    buildVersionLabel: 'Phiên bản',
+    buildBranchLabel: 'Branch',
   );
 
   /// [vi] when the language of the nearest [Localizations] is Vietnamese,
@@ -384,6 +390,14 @@ class BugReportStrings {
   /// Below [networkButtonLabel]: `count` kept calls, `failed` of them failed or with a status code of 400 or more.
   final String Function(int count, int failed) networkButtonSubtitle;
 
+  /// The label of the app version (`version (buildNumber)`) at the bottom of
+  /// the selection toolbar of [BugInspector].
+  final String buildVersionLabel;
+
+  /// The label of the branch the app was built from
+  /// ([BugInspector.branch]) at the bottom of the selection toolbar.
+  final String buildBranchLabel;
+
   /// A copy with the given texts replaced.
   BugReportStrings copyWith({
     String? selectionHint,
@@ -439,6 +453,8 @@ class BugReportStrings {
     String? close,
     String? networkButtonLabel,
     String Function(int count, int failed)? networkButtonSubtitle,
+    String? buildVersionLabel,
+    String? buildBranchLabel,
   }) {
     return BugReportStrings(
       selectionHint: selectionHint ?? this.selectionHint,
@@ -500,6 +516,8 @@ class BugReportStrings {
       networkButtonLabel: networkButtonLabel ?? this.networkButtonLabel,
       networkButtonSubtitle:
           networkButtonSubtitle ?? this.networkButtonSubtitle,
+      buildVersionLabel: buildVersionLabel ?? this.buildVersionLabel,
+      buildBranchLabel: buildBranchLabel ?? this.buildBranchLabel,
     );
   }
 }

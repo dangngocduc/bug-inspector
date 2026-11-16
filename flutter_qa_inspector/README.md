@@ -9,7 +9,7 @@ This README describes version `0.10.0` and the current public API.
 ## Requirements and installation
 
 - Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`.
-- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `cupertino_icons: ^1.0.8` (the icon font of the report pages), `archive: ^4.0.0` (ZIP), and `share_plus: >=12.0.0 <14.0.0` (share sheet).
+- Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `cupertino_icons: ^1.0.8` (the icon font of the report pages), `archive: ^4.0.0` (ZIP), `share_plus: >=12.0.0 <14.0.0` (share sheet), and `package_info_plus: >=8.3.0 <11.0.0` (the app version on the selection toolbar).
 - The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`. Without the define, or with `false`, the facade returns the app content unchanged; see [Production builds](#production-builds). `enabled: true` cannot override the compile-time flag.
 
 This package declares `publish_to: none`. Add it from Git:
@@ -28,7 +28,7 @@ For a local checkout, use `path: ../flutter_qa_inspector` instead, adjusted rela
 import 'package:flutter_qa_inspector/flutter_qa_inspector.dart';
 ```
 
-You do not need to declare `archive`, `share_plus`, or `cupertino_icons` separately unless your app imports them directly; the `CupertinoIcons` font is bundled through this package. An app that uses Dio already declares `dio`; keep its constraint inside `^5.2.0`. Because `share_plus` is a plugin, its native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration.
+You do not need to declare `archive`, `share_plus`, `package_info_plus`, or `cupertino_icons` separately unless your app imports them directly; the `CupertinoIcons` font is bundled through this package. An app that uses Dio already declares `dio`; keep its constraint inside `^5.2.0`. Because `share_plus` and `package_info_plus` are plugins, their native code is included in production builds too. The facade gates the Dart inspector/report flow, not native plugin registration. `package_info_plus` 10.x needs Dart 3.10+, Flutter 3.38.1+, iOS 13+ and macOS 10.15+; older toolchains resolve 8.3 or 9.x.
 
 Check the `share_plus` version resolved in your lockfile against the host's native toolchain:
 
@@ -46,7 +46,7 @@ Dependency resolution checks SDK constraints but does not update native deployme
 
 1. Reproduce the issue, then tap the floating bug button. An existing QA menu can also call `BugInspector.maybeModeCubitOf(context)?.enable()`.
 2. `BugInspectable` widgets receive pink borders and `BugInspectablePage` screens receive blue borders. The app content stops receiving pointer input, including taps, scrolling, and hover events.
-3. Tap a highlighted widget, or use **Select screen** on the floating toolbar to select the current screen. The inspector measures bounds, captures declared widget parameters and BLoC/Cubit snapshots, and reads the recent timeline and the recorded API calls. A tap outside all widget markers keeps selection mode active by default. When API calls are recorded, the toolbar also has **Inspect network** below **Select screen**, with the number of calls and failed calls; it leaves selection mode and opens the API call history (see [API calls (Dio)](#api-calls-dio)).
+3. The toolbar ends with the build info: the app version (`version (buildNumber)`) and the branch given by `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH`, so testers can tell which build they are reporting on (see [Build info](#build-info)). Tap a highlighted widget, or use **Select screen** on the floating toolbar to select the current screen. The inspector measures bounds, captures declared widget parameters and BLoC/Cubit snapshots, and reads the recent timeline and the recorded API calls. A tap outside all widget markers keeps selection mode active by default. When API calls are recorded, the toolbar also has **Inspect network** below **Select screen**, with the number of calls and failed calls; it leaves selection mode and opens the API call history (see [API calls (Dio)](#api-calls-dio)).
 4. The inspector disables selection mode by default, then calls `onWidgetSelected(widgetContext, selection)`. Use the toolbar's close button to cancel selection instead.
 5. With the quick setup, the callback captures the app and opens `BugReportPage`. Annotate the image, enter a description, and tap **Send** to share the PNG and ZIP.
 
@@ -116,9 +116,22 @@ Run the app or build a QA artifact with the same flag:
 flutter pub get
 flutter run --dart-define=FLUTTER_QA_INSPECTOR=true
 flutter build ipa --dart-define=FLUTTER_QA_INSPECTOR=true
+
+# Optional: show the branch of the build on the selection toolbar.
+flutter build apk --dart-define=FLUTTER_QA_INSPECTOR=true \
+  --dart-define=FLUTTER_QA_INSPECTOR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 ```
 
 The IPA command applies to an app with an iOS target. Keep your existing flavor, entrypoint, and Flutter/FVM runner. Changing the compile-time define requires running or building the app again; hot reload does not change it. Use this define in QA CI builds, and omit it from production builds.
+
+### Build info
+
+While selecting, the last part of the floating toolbar (`BugInspector.buildInfoKey`) shows:
+
+- **Version**: `version (buildNumber)` read once with `PackageInfo.fromPlatform()` from `package_info_plus`, for example `1.2.0 (42)`. Only the version shows when the build number is empty or equal to it. The row is left out while it loads and when the platform cannot give it.
+- **Branch**: `BugInspector.branchFromEnvironment`, the value of `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=<branch>`, trimmed. Without the define the row is left out. In CI, pass the branch variable of the CI system (for example `$CI_COMMIT_REF_NAME` or `$GITHUB_REF_NAME`), since CI checkouts are often on a detached `HEAD`.
+
+The footer is hidden when both are missing. The labels are `BugReportStrings.buildVersionLabel` and `buildBranchLabel` (`Version`/`Branch`, `Phiên bản`/`Branch` in `.vi`). A custom `BugInspector` can pass `branch:` instead of the define, or hide the footer with `showBuildInfo: false`. The build info is only displayed; it is not part of `BugWidgetSelection` or the bug report ZIP. Like the other defines, the branch is fixed at build time; hot reload does not change it.
 
 ### Display strings
 
@@ -339,6 +352,8 @@ The accessor returns `null` without an enabled host, including production builds
 | `showPageButton`, `pageButtonLabel` | `true`, `Select screen` | Page button, visible only when a marked screen is available. |
 | `selectPageOnEmptyTap` | `false` | When enabled, a tap outside all widget markers selects the page under the tap. |
 | `pageBorderColor`, `pageBorderWidth` | `#2979FF`, 4 | Defaults for page markers. |
+| `showBuildInfo` | `true` | Shows the app version and `branch` at the bottom of the selection toolbar, see [Build info](#build-info). |
+| `branch` | `BugInspector.branchFromEnvironment` | Branch of the build info; empty hides it. |
 
 Changing `enabled` at runtime rebuilds app content and loses its route stack and screen state. Decide it before `runApp`; use `InspectModeCubit` and `showLauncher` for runtime control. `InspectModeCubit` supports `enable()`, `disable()`, and `toggle()`; calls after `close()` are ignored.
 
@@ -579,7 +594,7 @@ The compile-time gate does not prevent evaluation of arguments supplied by your 
 - Prefer `BugBlocScope.lazy` over `BugBlocScope(bloc: context.read<T>())`; the latter reads its provider during build even in production.
 - Gate app-owned QA recorders, observers, Dio interceptors, Cubits, and custom report entry points with `if (BugInspector.enabledFromEnvironment)`. The facade already gates its own installation and report entry point.
 - Direct calls to `BugReportPage` and `BugReportBundle` still open forms or create bundles without the define; gate your own entry points if they must be QA-only.
-- The native `share_plus` plugin remains included.
+- The native `share_plus` and `package_info_plus` plugins remain included. `PackageInfo.fromPlatform()` is only called by an enabled host.
 - Use `maybeModeCubitOf` instead of reading an inspector Cubit that does not exist in production.
 
 Before release, ensure production commands and CI omit `FLUTTER_QA_INSPECTOR=true`, observer setup is gated, and lazy scopes are used where provider creation must remain unchanged.

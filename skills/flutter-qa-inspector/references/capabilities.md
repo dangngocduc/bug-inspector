@@ -25,7 +25,8 @@
 | Đánh dấu vùng trên ảnh | `BugScreenshotEditor`, `BugScreenshotAnnotationController`, `BugScreenshotAnnotation` | Vẽ, chọn, kéo, resize, xóa rectangle; pinch zoom/pan, reset zoom; `readOnly` cho preview. Controller do app sở hữu và dispose. |
 | Xuất ảnh đã đánh dấu | `BugScreenshot.toAnnotatedPng` | Render highlight và rectangles vào PNG; truyền style giống editor khi có custom style. |
 | Hiểu report ZIP được export | `BugReportPage` / `BugReportBundle` | Agent đọc ảnh, mô tả và inspector payload theo [bug-reports.md](bug-reports.md). Host có form riêng có thể xuất format khác. |
-| Automation bằng widget key | `BugInspector.launcherKey`, `exitButtonKey`, `pageButtonKey`, `networkButtonKey`; `BugNetworkHistoryPage.closeButtonKey`, `clearButtonKey` | Editor có thêm `deleteButtonKey`, `resetZoomButtonKey`. |
+| Biết bản đang test build từ đâu | `BugInspector.showBuildInfo`, `BugInspector.branch`, `BugInspector.branchFromEnvironment` | Phần cuối toolbar chọn hiện app version (`version (buildNumber)`, `package_info_plus`) và branch từ `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH`. Dòng thiếu giá trị bị ẩn. Chỉ hiển thị, không vào selection/ZIP. Nhãn `BugReportStrings.buildVersionLabel`/`buildBranchLabel`. |
+| Automation bằng widget key | `BugInspector.launcherKey`, `exitButtonKey`, `pageButtonKey`, `networkButtonKey`, `buildInfoKey`; `BugNetworkHistoryPage.closeButtonKey`, `clearButtonKey` | Editor có thêm `deleteButtonKey`, `resetZoomButtonKey`. |
 
 Khi inspect mode bật, app bên dưới ngừng nhận pointer; tap chọn không gọi action của widget. Border được vẽ foreground mà không đổi kích thước/padding. Tap ngoài marker giữ mode, trừ khi host bật `selectPageOnEmptyTap`.
 
@@ -55,8 +56,8 @@ Observer ghi `created`, `closed`, `error` cho BLoC/Cubit; `event`, `transition` 
 - Không có reflection đọc params của widget hay field của `State`, tự nhận biết các BLoC widget dùng hoặc timeline giá trị đầy đủ. Cần khai báo scope/mixin và serializer. Local state chỉ nằm trong `State` (ví dụ text của controller) không có trong report trừ khi được truyền thành param của widget dưới marker hoặc nằm trong BLoC/Cubit có scope.
 - Network chỉ hỗ trợ Dio (`dio ^5.2.0`), qua interceptor host tự thêm vào từng client; không bắt `http`, `HttpClient`, WebSocket hay request native. Interceptor thêm trước interceptor này mà trả lời trong `onRequest` (cache) làm call không được ghi; kết thúc call trong `onError` (retry resolve lỗi) làm record kẹt `pending`. Retry bằng `dio.fetch` thành record riêng. Queue 100 call, RAM-only; app gọi nhiều API có thể đã đẩy call cũ ra trước lúc chọn.
 - Registry, history, network và annotations không tự persist ra disk. Package có form và share sheet, nhưng không có dịch vụ upload hay tích hợp issue tracker; host nối qua `share:` hoặc flow riêng.
-- Form không có field tùy biến (severity, assignee, app version, device). Host cần thêm dữ liệu thì dùng `BugInspector` + form riêng, hoặc gắn qua `share:` khi upload.
-- `share_plus` là dependency plugin của package nên có native code trong cả bản production của host.
+- Form không có field tùy biến (severity, assignee, app version, device). App version và branch chỉ hiện trên toolbar chọn, không tự vào report; host cần thêm dữ liệu thì dùng `BugInspector` + form riêng, hoặc gắn qua `share:` khi upload.
+- `share_plus` và `package_info_plus` là dependency plugin của package nên có native code trong cả bản production của host.
 - Trang vẽ (`ScreenshotAnnotationPage`) là private; dùng `BugScreenshotEditor` nếu host dựng editor riêng.
 - Runtime type names có thể bị rút gọn khi `--obfuscate`; dùng stable marker ID để truy nguồn.
 - `onWidgetSelected` nhận callback trả `FutureOr<void>`. Return/await future của report route để launcher ẩn cho tới khi report đóng; callback không return future thì launcher vẫn hiện.

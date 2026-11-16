@@ -39,7 +39,7 @@ Nếu skill được chuyển sang host repo khác, tìm dependency đang đư�
 ## Các ràng buộc tích hợp
 
 - Consumer import `package:flutter_qa_inspector/flutter_qa_inspector.dart`; dùng public wrappers thay vì copy implementation hoặc import `src/`.
-- Công tắc compile-time là `--dart-define=FLUTTER_QA_INSPECTOR=true`. `enabled: true` không bật được inspector nếu thiếu define. Không dùng tên flag cũ `QA_INSPECTOR`.
+- Công tắc compile-time là `--dart-define=FLUTTER_QA_INSPECTOR=true`. `enabled: true` không bật được inspector nếu thiếu define. Không dùng tên flag cũ `QA_INSPECTOR`. `--dart-define=FLUTTER_QA_INSPECTOR_BRANCH=<branch>` (tùy chọn) chỉ để hiện branch ở cuối toolbar chọn, cạnh app version; không bật inspector và không vào report ZIP.
 - Mặc định tích hợp bằng `FlutterQaInspector.install()` (trước khi tạo BLoC/Cubit) và `FlutterQaInspector.wrap(child:)`/`.builder` trong `MaterialApp.builder`: có sẵn timeline, launcher, chụp ảnh, form báo lỗi, ZIP và share sheet. Không copy form/bundle vào host; host còn bản copy cũ thì xóa (trùng tên gây `ambiguous_import`).
 - Giữ nguyên Navigator/Router, theme, providers, state và callbacks của app. Ghép `wrap` (hoặc `BugInspector`) vào builder đang có và truyền tiếp `child`; không thay app bằng demo trong reference.
 - Thêm `BugInspectable` cho vùng widget, `BugInspectablePage` cho toàn màn hình; navigator dùng `onGenerateRoute` có tên route thì dùng `BugInspectablePage.route(settings:, child:)`. Wrapper không tự tìm source file, BLoC phụ thuộc hay params của widget.

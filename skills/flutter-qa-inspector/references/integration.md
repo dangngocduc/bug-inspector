@@ -11,14 +11,15 @@ dependencies:
     # hoặc git: { url: <repo>, path: flutter_qa_inspector, ref: <tag/sha> }
 ```
 
-Contract `0.10.0`: Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `dio ^5.2.0` (từ `0.10.0`, cho `BugInspectorDioInterceptor`, pure Dart), `cupertino_icons ^1.0.8` (font `CupertinoIcons` của form báo lỗi, JSON tree, lịch sử API), `archive ^4.0.0` (ZIP) và `share_plus >=12.0.0 <14.0.0` (share sheet); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `dio`, `share_plus` hoặc `archive`, kiểm tra version nằm trong range trên (host Dio `<5.2.0` cần nâng lên trước); không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ. Icon của report hiện thành ô vuông nghĩa là host đang dùng ref cũ chưa khai báo `cupertino_icons`: nâng ref thư viện thay vì thêm `cupertino_icons` vào host; host chỉ khai báo nó như workaround cho thư viện thì có thể bỏ sau khi nâng ref (giữ nếu app tự dùng `CupertinoIcons`).
+Contract `0.10.0`: Dart `>=3.4.0 <4.0.0`, Flutter `>=3.29.0`. Package tự kéo `flutter_bloc ^9.1.1`, `bloc ^9.2.0` (`MultiBlocObserver`), `dio ^5.2.0` (từ `0.10.0`, cho `BugInspectorDioInterceptor`, pure Dart), `cupertino_icons ^1.0.8` (font `CupertinoIcons` của form báo lỗi, JSON tree, lịch sử API), `archive ^4.0.0` (ZIP), `share_plus >=12.0.0 <14.0.0` (share sheet) và `package_info_plus >=8.3.0 <11.0.0` (app version ở cuối toolbar chọn); host không cần khai báo thêm chỉ để tích hợp. Nếu host đã pin/override `dio`, `share_plus`, `package_info_plus` hoặc `archive`, kiểm tra version nằm trong range trên (host Dio `<5.2.0` cần nâng lên trước); không nâng dependency khác của host chỉ để khớp đoạn YAML. Host đã có `archive` chỉ để dùng cho bản copy form report cũ thì có thể bỏ. Icon của report hiện thành ô vuông nghĩa là host đang dùng ref cũ chưa khai báo `cupertino_icons`: nâng ref thư viện thay vì thêm `cupertino_icons` vào host; host chỉ khai báo nó như workaround cho thư viện thì có thể bỏ sau khi nâng ref (giữ nếu app tự dùng `CupertinoIcons`).
 
-`share_plus` là plugin: native code của nó có trong mọi build của host, kể cả production. Khi host chỉ mở form qua facade, nhánh inspector/form không được gọi khi thiếu define. Báo rõ điểm này nếu host nhạy cảm với kích thước binary hoặc danh sách plugin.
+`share_plus` và `package_info_plus` là plugin: native code của chúng có trong mọi build của host, kể cả production; `PackageInfo.fromPlatform()` chỉ được gọi bởi host đang bật. Khi host chỉ mở form qua facade, nhánh inspector/form không được gọi khi thiếu define. Báo rõ điểm này nếu host nhạy cảm với kích thước binary hoặc danh sách plugin.
 
 Đối chiếu version trong lockfile với native toolchain trước khi build:
 
 - `share_plus 12.0.0`: iOS 12+, macOS 10.14+; Android cần Java 17, Kotlin 2.2.0, AGP 8.12.1+, Gradle 8.13+.
 - `share_plus 13.3.1`: Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; yêu cầu Android như trên. Pub kiểm tra SDK khi resolve, không tự nâng deployment target native của host.
+- `package_info_plus 10.x`: Dart 3.10+, Flutter 3.38.1+, iOS 13+, macOS 10.15+; toolchain cũ hơn resolve 8.3/9.x.
 - Với share sheet mặc định trên iOS, thêm `NSPhotoLibraryAddUsageDescription` vào `ios/Runner/Info.plist` cho action **Save Image**. Package không tự ghi được Info.plist của host. Form đã đặt `sharePositionOrigin` cho popover trên iPad.
 - Linux không share file qua plugin; dùng `share:` riêng nếu cần gửi ZIP. Web tùy browser có thể share file hoặc download.
 
@@ -28,7 +29,13 @@ Nguồn yêu cầu theo version: [12.0.0](https://pub.dev/packages/share_plus/ve
 flutter pub get
 flutter run --dart-define=FLUTTER_QA_INSPECTOR=true
 flutter build ipa --dart-define=FLUTTER_QA_INSPECTOR=true
+
+# Tùy chọn: hiện branch của build ở cuối toolbar chọn.
+flutter build apk --dart-define=FLUTTER_QA_INSPECTOR=true \
+  --dart-define=FLUTTER_QA_INSPECTOR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 ```
+
+Build info: khi đang chọn, phần cuối toolbar (`BugInspector.buildInfoKey`) hiện **Version** `version (buildNumber)` đọc bằng `package_info_plus` (chỉ `version` khi build number rỗng hoặc trùng) và **Branch** = `BugInspector.branchFromEnvironment` (giá trị `FLUTTER_QA_INSPECTOR_BRANCH`, đã trim). Dòng nào thiếu giá trị thì ẩn; thiếu cả hai thì ẩn cả phần. Trên CI thường checkout detached `HEAD`, nên truyền biến branch của CI (ví dụ `$GITHUB_REF_NAME`, `$CI_COMMIT_REF_NAME`) thay vì `git rev-parse`. Facade dùng mặc định; host tùy chỉnh có `branch:` (mặc định define) và `showBuildInfo:` (mặc định `true`). Đây chỉ là hiển thị: version/branch **không** nằm trong `BugWidgetSelection`, `inspector.json` hay ZIP.
 
 Lệnh IPA là ví dụ artifact QA khi project có target iOS. Dùng đúng flavor, entrypoint và Flutter/FVM runner sẵn có của host. Define là compile-time: sau khi đổi cần chạy/build lại, hot reload không đổi nó. Với VS Code, thêm define vào `toolArgs` của configuration QA, không đưa vào configuration production.
 
@@ -151,7 +158,7 @@ Recorder không bắt buộc cho snapshot: `stateRecorder: null` cho `stateHisto
 - `disableModeOnSelection` mặc định `true`: mode tắt trước callback. Nếu đặt `false`, tắt mode bằng accessor trước khi mở form hoặc chụp ảnh, nếu không overlay còn chặn tap và ảnh còn border.
 - `selectionTrigger` mặc định `BugSelectionTrigger.tapUp`; `tapDown` chọn ngay khi đặt ngón tay, kể cả trước khi kéo.
 - `historyWindow` mặc định 30 giây; `BugStateRecorder(maxRecords: ...)` kiểm soát giới hạn queue. Tăng cửa sổ không khôi phục các record đã bị queue loại.
-- Có thể chỉnh `floatingAlignment`, `selectionHint`, `pageButtonLabel`, `showPageButton`, `selectPageOnEmptyTap` và border qua host. `strings` (`BugReportStrings`) cho text của nút **Inspect network** và màn lịch sử API; nút này chỉ hiện khi truyền `networkRecorder`. Đưa các chuỗi tùy chỉnh theo hệ localization của app.
+- Có thể chỉnh `floatingAlignment`, `selectionHint`, `pageButtonLabel`, `showPageButton`, `selectPageOnEmptyTap`, `showBuildInfo`, `branch` và border qua host. `strings` (`BugReportStrings`) cho text của nút **Inspect network**, màn lịch sử API và nhãn build info (`buildVersionLabel`, `buildBranchLabel`); nút này chỉ hiện khi truyền `networkRecorder`. Đưa các chuỗi tùy chỉnh theo hệ localization của app.
 
 Callback nhận context của marker, thuận tiện tìm Navigator chứa widget. Khi mở báo lỗi toàn app, dùng root navigator nếu phù hợp với routing của host. Sau `await`, kiểm tra `widgetContext.mounted`. Nếu cần ảnh, [chụp trước khi mở form](screenshots.md), không tự chụp form đã mở.
 

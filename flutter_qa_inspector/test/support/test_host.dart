@@ -19,6 +19,9 @@ Future<List<BugWidgetSelection>> pumpHost(
   bool showLauncher = true,
   bool showPageButton = true,
   bool selectPageOnEmptyTap = false,
+  bool showBuildInfo = true,
+  String branch = BugInspector.branchFromEnvironment,
+  BugReportStrings? strings,
   BugWidgetSelectedCallback? onWidgetSelected,
 }) async {
   final selections = <BugWidgetSelection>[];
@@ -36,6 +39,9 @@ Future<List<BugWidgetSelection>> pumpHost(
         showLauncher: showLauncher,
         showPageButton: showPageButton,
         selectPageOnEmptyTap: selectPageOnEmptyTap,
+        showBuildInfo: showBuildInfo,
+        branch: branch,
+        strings: strings,
         onWidgetSelected: (widgetContext, selection) {
           selections.add(selection);
           return onWidgetSelected?.call(widgetContext, selection);
@@ -106,3 +112,5 @@ final Finder launcher = find.byKey(BugInspector.launcherKey);
 final Finder exitButton = find.byKey(BugInspector.exitButtonKey);
 
 final Finder pageButton = find.byKey(BugInspector.pageButtonKey);
+
+final Finder buildInfo = find.byKey(BugInspector.buildInfoKey);
