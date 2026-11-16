@@ -2,7 +2,7 @@
 
 ## Dependency và build flag
 
-Package trong repo có `publish_to: none`; không giả định đã có version trên pub.dev. Dùng path đúng từ `pubspec.yaml` của host, hoặc Git source/ref thực tế mà project cung cấp. Ví dụ host nằm cạnh thư mục package:
+Package trong repo không đặt `publish_to`, cho phép publish lên pub.dev. Cấu hình này không xác nhận version đã được publish; khi dùng dependency hosted, kiểm tra version thực tế trên pub.dev. Với dependency path hoặc Git, dùng đúng path/source/ref từ `pubspec.yaml` của host. Ví dụ host nằm cạnh thư mục package:
 
 ```yaml
 dependencies:

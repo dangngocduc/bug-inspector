@@ -12,7 +12,7 @@ This README describes version `0.10.0` and the current public API.
 - Dependencies: `flutter_bloc: ^9.1.1`, `bloc: ^9.2.0` (`MultiBlocObserver`), `dio: ^5.2.0` (`BugInspectorDioInterceptor`, pure Dart), `cupertino_icons: ^1.0.8` (the icon font of the report pages), `archive: ^4.0.0` (ZIP), `share_plus: >=12.0.0 <14.0.0` (share sheet), and `package_info_plus: >=8.3.0 <11.0.0` (the app version on the selection toolbar).
 - The inspector requires `--dart-define=FLUTTER_QA_INSPECTOR=true`. Without the define, or with `false`, the facade returns the app content unchanged; see [Production builds](#production-builds). `enabled: true` cannot override the compile-time flag.
 
-This package declares `publish_to: none`. Add it from Git:
+To use the package directly from this repository, add it from Git:
 
 ```yaml
 dependencies:

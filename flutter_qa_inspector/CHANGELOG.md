@@ -1,5 +1,6 @@
 ## 0.10.0
 
+- Remove `publish_to: none` so the package can be published to pub.dev.
 - Build info: the selection toolbar ends with the app version
   (`version (buildNumber)`, read with `package_info_plus`) and the branch the
   build comes from, given with
