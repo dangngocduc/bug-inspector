@@ -4,6 +4,8 @@ description: >-
   attach its info, BLoC/Cubit state snapshots, a recent state timeline, the
   Dio API calls and an annotated screenshot to a bug report, shared as a ZIP.
 version: 0.10.0
+homepage: https://dangngocduc.dev
+repository: https://github.com/dangngocduc/bug-inspector
 publish_to: none
 
 environment:
