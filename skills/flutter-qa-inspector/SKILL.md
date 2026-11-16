@@ -31,7 +31,7 @@ Trong repo này, package nằm ở `flutter_qa_inspector/` tính từ root proje
 
 - [pubspec.yaml](../../flutter_qa_inspector/pubspec.yaml): version, SDK và dependencies thực tế.
 - [Public entrypoint](../../flutter_qa_inspector/lib/flutter_qa_inspector.dart): import duy nhất cho consumer, các API được khai báo trong những file `part` của nó.
-- [README](../../flutter_qa_inspector/README.md) và [app example](../../flutter_qa_inspector/example/lib/app.dart): hướng dẫn và luồng tích hợp đang có.
+- [README](../../README.md) và [app example](../../flutter_qa_inspector/example/lib/app.dart): hướng dẫn và luồng tích hợp đang có.
 - [Form báo lỗi và ZIP](../../flutter_qa_inspector/lib/src/report/): `BugReportPage`, `BugReportBundle`, `BugReportStrings`.
 
 Nếu skill được chuyển sang host repo khác, tìm dependency đang được host resolve qua `pubspec.yaml`, lockfile hoặc `.dart_tool/package_config.json`; không giữ nguyên đường dẫn local của repo này. Đối chiếu constructor và phần source liên quan khi version khác hoặc tài liệu mâu thuẫn. Không coi bản thiết kế implementation là bằng chứng một API đã tồn tại.

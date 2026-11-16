@@ -587,7 +587,7 @@ The editor preserves image aspect ratio and uses the largest size allowed by its
 | `BugScreenshotEditor` | Builds an empty box. |
 | `BugScreenshot.toAnnotatedPng` | Returns the original `pngBytes`. |
 
-Direct marker/host wrappers still add widget elements, but no render objects. Their layout, paint, hit testing, and semantics remain unchanged. [production_build_test.dart](test/production_build_test.dart) checks render-tree and semantics parity against an app without the package. No current binary-size measurement is provided; historical measurements before the report/plugin integration do not describe version `0.10.0`.
+Direct marker/host wrappers still add widget elements, but no render objects. Their layout, paint, hit testing, and semantics remain unchanged. [production_build_test.dart](flutter_qa_inspector/test/production_build_test.dart) checks render-tree and semantics parity against an app without the package. No current binary-size measurement is provided; historical measurements before the report/plugin integration do not describe version `0.10.0`.
 
 The compile-time gate does not prevent evaluation of arguments supplied by your app. Keep these boundaries in mind:
 
@@ -635,4 +635,4 @@ Runtime acceptance checks for a host integration:
 | Capture, annotate, and send | The screenshot precedes the form, annotations align with image coordinates, and the ZIP has the documented entries. |
 | Exercise Android/iOS QA builds | Selection, navigation, editor, and sharing work on the target device with the host's build configuration. |
 
-These are acceptance criteria, not a claim of device verification. Analyzer results and widget tests do not replace runtime checks on the target platforms. See the [example app](example/lib/app.dart) for an integration using existing app state and the built-in report flow.
+These are acceptance criteria, not a claim of device verification. Analyzer results and widget tests do not replace runtime checks on the target platforms. See the [example app](flutter_qa_inspector/example/lib/app.dart) for an integration using existing app state and the built-in report flow.
